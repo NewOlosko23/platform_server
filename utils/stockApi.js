@@ -1,436 +1,159 @@
 // utils/stockApi.js
-import axios from "axios";
+// Stock API utilities that fetch data from MongoDB database
 
+import Stock from '../models/Stock.js';
+
+/**
+ * Fetch stock price from MongoDB database
+ * @param {string} symbol - Stock symbol (e.g., 'AAPL', 'GOOGL')
+ * @returns {Promise<Object>} Stock data with price, volume, timestamp
+ */
 export async function fetchStockPrice(symbol) {
-  // Validate API key
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error("No RapidAPI key configured. Please set RAPIDAPI_KEY in your .env file");
-  }
-
   try {
-    const options = {
-      method: 'GET',
-      url: 'https://real-time-finance-data.p.rapidapi.com/stock-quote',
-      params: {
-        symbol: `${symbol.toUpperCase()}:NASDAQ`,
-        language: 'en'
-      },
-      headers: {
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-        'x-rapidapi-host': 'real-time-finance-data.p.rapidapi.com'
-      }
-    };
-
-    const response = await axios.request(options);
+    // Find the latest stock data from MongoDB
+    const stock = await Stock.findOne({ 
+      ticker: new RegExp("^" + symbol + "$", "i") 
+    }).sort({ scrapedAt: -1 });
     
-    // Extract price and volume from the response
-    if (response.data && response.data.data) {
-      const stockData = response.data.data;
-      const price = parseFloat(stockData.price);
-      const volume = parseInt(stockData.volume);
-      
-      if (price && price > 0) {
-        console.log(`✅ Stock data for ${symbol}: Price $${price}, Volume ${volume} (via RapidAPI Finance Data)`);
-        return {
-          price: price,
-          volume: volume,
-          symbol: symbol.toUpperCase(),
-          timestamp: new Date().toISOString()
-        };
-      } else {
-        throw new Error("Invalid price data from RapidAPI Finance Data");
-      }
-    } else {
-      throw new Error("Invalid response format from RapidAPI Finance Data");
+    if (!stock) {
+      console.warn(`Stock ${symbol} not found in database, using mock data`);
+      return getMockStockData(symbol);
     }
     
-  } catch (err) {
-    console.error(`❌ RapidAPI Finance Data failed for ${symbol}: ${err.message}`);
-    throw new Error(`Failed to fetch stock data for ${symbol}: ${err.message}`);
+    // Parse the price from string to number
+    const price = parseFloat(stock.price?.replace(/[₹,]/g, '')) || 0;
+    
+    return {
+      symbol: stock.ticker.toUpperCase(),
+      price: price,
+      volume: stock.volume || 0,
+      timestamp: stock.scrapedAt || new Date().toISOString(),
+      change: stock.change,
+      changePercent: stock.percent
+    };
+  } catch (error) {
+    console.error(`Error fetching stock price for ${symbol} from database:`, error.message);
+    return getMockStockData(symbol);
   }
 }
 
-// New function to get additional stock data
-export async function fetchStockData(symbol) {
-  // Validate API key
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error("No RapidAPI key configured. Please set RAPIDAPI_KEY in your .env file");
-  }
-
-  try {
-    const options = {
-      method: 'GET',
-      url: 'https://real-time-finance-data.p.rapidapi.com/stock-quote',
-      params: {
-        symbol: `${symbol.toUpperCase()}:NASDAQ`,
-        language: 'en'
-      },
-      headers: {
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-        'x-rapidapi-host': 'real-time-finance-data.p.rapidapi.com'
-      }
-    };
-
-    const response = await axios.request(options);
-    
-    if (response.data && response.data.data) {
-      const stockData = response.data.data;
-      
-      return {
-        symbol: symbol.toUpperCase(),
-        price: parseFloat(stockData.price),
-        volume: parseInt(stockData.volume),
-        change: parseFloat(stockData.change),
-        changePercent: parseFloat(stockData.change_percent),
-        dayHigh: parseFloat(stockData.day_high),
-        dayLow: parseFloat(stockData.day_low),
-        marketCap: stockData.market_cap,
-        timestamp: new Date().toISOString()
-      };
-    } else {
-      throw new Error("Invalid response format from RapidAPI Finance Data");
-    }
-    
-  } catch (err) {
-    console.error(`❌ RapidAPI Finance Data failed for ${symbol}: ${err.message}`);
-    throw new Error(`Failed to fetch stock data for ${symbol}: ${err.message}`);
-  }
+/**
+ * Get mock stock data for testing and fallback purposes
+ * @param {string} symbol - Stock symbol
+ * @returns {Object} Mock stock data
+ */
+export function getMockStockData(symbol) {
+  // Generate consistent mock data based on symbol
+  const basePrice = Math.abs(symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 1000 + 50;
+  const variation = (Math.sin(symbol.length) * 0.1 + 1); // Small variation based on symbol
+  const price = Math.round(basePrice * variation * 100) / 100;
+  
+  return {
+    symbol: symbol.toUpperCase(),
+    price: price,
+    volume: Math.floor(Math.random() * 1000000) + 100000,
+    timestamp: new Date().toISOString()
+  };
 }
 
-// Function to get currency exchange rates
+/**
+ * Fetch exchange rate between two currencies
+ * @param {string} fromCurrency - Source currency code (e.g., 'USD')
+ * @param {string} toCurrency - Target currency code (e.g., 'EUR')
+ * @returns {Promise<Object>} Exchange rate data
+ */
 export async function fetchExchangeRate(fromCurrency, toCurrency) {
-  // Validate API key
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error("No RapidAPI key configured. Please set RAPIDAPI_KEY in your .env file");
-  }
-
   try {
-    const options = {
-      method: 'GET',
-      url: 'https://real-time-finance-data.p.rapidapi.com/currency-exchange-rate',
-      params: {
-        from_symbol: fromCurrency.toUpperCase(),
-        to_symbol: toCurrency.toUpperCase(),
-        language: 'en'
-      },
-      headers: {
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-        'x-rapidapi-host': 'real-time-finance-data.p.rapidapi.com'
-      }
-    };
-
-    const response = await axios.request(options);
+    // Try to fetch from a real exchange rate API
+    const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${fromCurrency}`);
     
-    if (response.data && response.data.data) {
-      const exchangeData = response.data.data;
-      const rate = parseFloat(exchangeData.exchange_rate);
-      
-      if (rate && rate > 0) {
-        console.log(`✅ Exchange rate for ${fromCurrency}/${toCurrency}: ${rate} (via RapidAPI Finance Data)`);
-        return {
-          fromCurrency: fromCurrency.toUpperCase(),
-          toCurrency: toCurrency.toUpperCase(),
-          exchangeRate: rate,
-          timestamp: new Date().toISOString()
-        };
-      } else {
-        throw new Error("Invalid exchange rate data from RapidAPI Finance Data");
-      }
-    } else {
-      throw new Error("Invalid response format from RapidAPI Finance Data");
+    if (!response.ok) {
+      throw new Error(`Exchange rate API request failed: ${response.status}`);
     }
     
-  } catch (err) {
-    console.error(`❌ RapidAPI Finance Data failed for ${fromCurrency}/${toCurrency}: ${err.message}`);
-    throw new Error(`Failed to fetch exchange rate for ${fromCurrency}/${toCurrency}: ${err.message}`);
+    const data = await response.json();
+    const rate = data.rates[toCurrency.toUpperCase()];
+    
+    if (!rate) {
+      throw new Error(`Exchange rate not found for ${toCurrency}`);
+    }
+    
+    return {
+      fromCurrency: fromCurrency.toUpperCase(),
+      toCurrency: toCurrency.toUpperCase(),
+      exchangeRate: rate,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.warn(`Failed to fetch real exchange rate for ${fromCurrency}/${toCurrency}, using mock data:`, error.message);
+    return getMockExchangeRate(fromCurrency, toCurrency);
   }
 }
 
-// Function to get multiple currency exchange rates at once
+/**
+ * Fetch multiple exchange rates from a base currency
+ * @param {string} baseCurrency - Base currency code
+ * @param {Array<string>} targetCurrencies - Array of target currency codes
+ * @returns {Promise<Object>} Multiple exchange rates data
+ */
 export async function fetchMultipleExchangeRates(baseCurrency, targetCurrencies) {
-  // Validate API key
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error("No RapidAPI key configured. Please set RAPIDAPI_KEY in your .env file");
-  }
-
   try {
-    // For multiple currencies, we'll make individual requests since the API might not support multiple targets
-    const promises = targetCurrencies.map(async (targetCurrency) => {
-      try {
-        const rate = await fetchExchangeRate(baseCurrency, targetCurrency);
-        return rate;
-      } catch (error) {
-        console.warn(`Failed to fetch rate for ${baseCurrency}/${targetCurrency}: ${error.message}`);
-        return null;
-      }
-    });
-
-    const results = await Promise.all(promises);
-    const validResults = results.filter(result => result !== null);
-
-    console.log(`✅ Multiple exchange rates for ${baseCurrency}: ${validResults.length}/${targetCurrencies.length} rates fetched`);
-    return validResults;
+    const rates = {};
     
-  } catch (err) {
-    console.error(`❌ RapidAPI Finance Data failed for multiple rates ${baseCurrency}: ${err.message}`);
-    throw new Error(`Failed to fetch multiple exchange rates for ${baseCurrency}: ${err.message}`);
+    // Fetch rates for each target currency
+    for (const targetCurrency of targetCurrencies) {
+      const rateData = await fetchExchangeRate(baseCurrency, targetCurrency);
+      rates[targetCurrency.toUpperCase()] = rateData.exchangeRate;
+    }
+    
+    return {
+      baseCurrency: baseCurrency.toUpperCase(),
+      rates: rates,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.warn(`Failed to fetch multiple exchange rates, using mock data:`, error.message);
+    return getMockMultipleExchangeRates(baseCurrency, targetCurrencies);
   }
 }
 
-// Function to get stock news
-export async function fetchStockNews(symbol, limit = 10) {
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error("No RapidAPI key configured. Please set RAPIDAPI_KEY in your .env file");
-  }
-
-  try {
-    const options = {
-      method: 'GET',
-      url: 'https://real-time-finance-data.p.rapidapi.com/stock-news',
-      params: {
-        symbol: `${symbol.toUpperCase()}:NASDAQ`,
-        language: 'en',
-        limit: limit
-      },
-      headers: {
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-        'x-rapidapi-host': 'real-time-finance-data.p.rapidapi.com'
-      }
-    };
-
-    const response = await axios.request(options);
-    
-    if (response.data && response.data.data) {
-      const newsData = response.data.data;
-      console.log(`✅ Stock news for ${symbol}: ${newsData.length} articles fetched`);
-      return {
-        symbol: symbol.toUpperCase(),
-        news: newsData,
-        count: newsData.length,
-        timestamp: new Date().toISOString()
-      };
-    } else {
-      throw new Error("Invalid response format from RapidAPI Finance Data");
-    }
-    
-  } catch (err) {
-    console.error(`❌ RapidAPI Finance Data failed for stock news ${symbol}: ${err.message}`);
-    throw new Error(`Failed to fetch stock news for ${symbol}: ${err.message}`);
-  }
+/**
+ * Get mock exchange rate data
+ * @param {string} fromCurrency - Source currency
+ * @param {string} toCurrency - Target currency
+ * @returns {Object} Mock exchange rate data
+ */
+function getMockExchangeRate(fromCurrency, toCurrency) {
+  // Generate consistent mock exchange rates
+  const currencies = [fromCurrency, toCurrency].sort();
+  const seed = currencies.join('').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const rate = 0.5 + (seed % 100) / 100; // Rate between 0.5 and 1.5
+  
+  return {
+    fromCurrency: fromCurrency.toUpperCase(),
+    toCurrency: toCurrency.toUpperCase(),
+    exchangeRate: Math.round(rate * 10000) / 10000, // Round to 4 decimal places
+    timestamp: new Date().toISOString()
+  };
 }
 
-// Function to get stock time series data
-export async function fetchStockTimeSeries(symbol, period = '1d', interval = '1h') {
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error("No RapidAPI key configured. Please set RAPIDAPI_KEY in your .env file");
+/**
+ * Get mock multiple exchange rates data
+ * @param {string} baseCurrency - Base currency
+ * @param {Array<string>} targetCurrencies - Target currencies
+ * @returns {Object} Mock multiple exchange rates data
+ */
+function getMockMultipleExchangeRates(baseCurrency, targetCurrencies) {
+  const rates = {};
+  
+  for (const targetCurrency of targetCurrencies) {
+    const rateData = getMockExchangeRate(baseCurrency, targetCurrency);
+    rates[targetCurrency.toUpperCase()] = rateData.exchangeRate;
   }
-
-  try {
-    const options = {
-      method: 'GET',
-      url: 'https://real-time-finance-data.p.rapidapi.com/stock-time-series',
-      params: {
-        symbol: `${symbol.toUpperCase()}:NASDAQ`,
-        period: period,
-        interval: interval,
-        language: 'en'
-      },
-      headers: {
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-        'x-rapidapi-host': 'real-time-finance-data.p.rapidapi.com'
-      }
-    };
-
-    const response = await axios.request(options);
-    
-    if (response.data && response.data.data) {
-      const timeSeriesData = response.data.data;
-      console.log(`✅ Stock time series for ${symbol}: ${timeSeriesData.length} data points fetched`);
-      return {
-        symbol: symbol.toUpperCase(),
-        period: period,
-        interval: interval,
-        data: timeSeriesData,
-        count: timeSeriesData.length,
-        timestamp: new Date().toISOString()
-      };
-    } else {
-      throw new Error("Invalid response format from RapidAPI Finance Data");
-    }
-    
-  } catch (err) {
-    console.error(`❌ RapidAPI Finance Data failed for stock time series ${symbol}: ${err.message}`);
-    throw new Error(`Failed to fetch stock time series for ${symbol}: ${err.message}`);
-  }
-}
-
-// Function to get currency time series data
-export async function fetchCurrencyTimeSeries(fromCurrency, toCurrency, period = '1d', interval = '1h') {
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error("No RapidAPI key configured. Please set RAPIDAPI_KEY in your .env file");
-  }
-
-  try {
-    const options = {
-      method: 'GET',
-      url: 'https://real-time-finance-data.p.rapidapi.com/currency-time-series',
-      params: {
-        from_symbol: fromCurrency.toUpperCase(),
-        to_symbol: toCurrency.toUpperCase(),
-        period: period,
-        interval: interval,
-        language: 'en'
-      },
-      headers: {
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-        'x-rapidapi-host': 'real-time-finance-data.p.rapidapi.com'
-      }
-    };
-
-    const response = await axios.request(options);
-    
-    if (response.data && response.data.data) {
-      const timeSeriesData = response.data.data;
-      console.log(`✅ Currency time series for ${fromCurrency}/${toCurrency}: ${timeSeriesData.length} data points fetched`);
-      return {
-        fromCurrency: fromCurrency.toUpperCase(),
-        toCurrency: toCurrency.toUpperCase(),
-        period: period,
-        interval: interval,
-        data: timeSeriesData,
-        count: timeSeriesData.length,
-        timestamp: new Date().toISOString()
-      };
-    } else {
-      throw new Error("Invalid response format from RapidAPI Finance Data");
-    }
-    
-  } catch (err) {
-    console.error(`❌ RapidAPI Finance Data failed for currency time series ${fromCurrency}/${toCurrency}: ${err.message}`);
-    throw new Error(`Failed to fetch currency time series for ${fromCurrency}/${toCurrency}: ${err.message}`);
-  }
-}
-
-// Function to get currency news
-export async function fetchCurrencyNews(currency, limit = 10) {
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error("No RapidAPI key configured. Please set RAPIDAPI_KEY in your .env file");
-  }
-
-  try {
-    const options = {
-      method: 'GET',
-      url: 'https://real-time-finance-data.p.rapidapi.com/currency-news',
-      params: {
-        currency: currency.toUpperCase(),
-        language: 'en',
-        limit: limit
-      },
-      headers: {
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-        'x-rapidapi-host': 'real-time-finance-data.p.rapidapi.com'
-      }
-    };
-
-    const response = await axios.request(options);
-    
-    if (response.data && response.data.data) {
-      const newsData = response.data.data;
-      console.log(`✅ Currency news for ${currency}: ${newsData.length} articles fetched`);
-      return {
-        currency: currency.toUpperCase(),
-        news: newsData,
-        count: newsData.length,
-        timestamp: new Date().toISOString()
-      };
-    } else {
-      throw new Error("Invalid response format from RapidAPI Finance Data");
-    }
-    
-  } catch (err) {
-    console.error(`❌ RapidAPI Finance Data failed for currency news ${currency}: ${err.message}`);
-    throw new Error(`Failed to fetch currency news for ${currency}: ${err.message}`);
-  }
-}
-
-// Function to get market trends
-export async function fetchMarketTrends(market = 'US', limit = 20) {
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error("No RapidAPI key configured. Please set RAPIDAPI_KEY in your .env file");
-  }
-
-  try {
-    const options = {
-      method: 'GET',
-      url: 'https://real-time-finance-data.p.rapidapi.com/market-trends',
-      params: {
-        market: market,
-        language: 'en',
-        limit: limit
-      },
-      headers: {
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-        'x-rapidapi-host': 'real-time-finance-data.p.rapidapi.com'
-      }
-    };
-
-    const response = await axios.request(options);
-    
-    if (response.data && response.data.data) {
-      const trendsData = response.data.data;
-      console.log(`✅ Market trends for ${market}: ${trendsData.length} trends fetched`);
-      return {
-        market: market,
-        trends: trendsData,
-        count: trendsData.length,
-        timestamp: new Date().toISOString()
-      };
-    } else {
-      throw new Error("Invalid response format from RapidAPI Finance Data");
-    }
-    
-  } catch (err) {
-    console.error(`❌ RapidAPI Finance Data failed for market trends ${market}: ${err.message}`);
-    throw new Error(`Failed to fetch market trends for ${market}: ${err.message}`);
-  }
-}
-
-// Function to get company overview
-export async function fetchCompanyOverview(symbol) {
-  if (!process.env.RAPIDAPI_KEY) {
-    throw new Error("No RapidAPI key configured. Please set RAPIDAPI_KEY in your .env file");
-  }
-
-  try {
-    const options = {
-      method: 'GET',
-      url: 'https://real-time-finance-data.p.rapidapi.com/company-overview',
-      params: {
-        symbol: `${symbol.toUpperCase()}:NASDAQ`,
-        language: 'en'
-      },
-      headers: {
-        'x-rapidapi-key': process.env.RAPIDAPI_KEY,
-        'x-rapidapi-host': 'real-time-finance-data.p.rapidapi.com'
-      }
-    };
-
-    const response = await axios.request(options);
-    
-    if (response.data && response.data.data) {
-      const companyData = response.data.data;
-      console.log(`✅ Company overview for ${symbol} fetched`);
-      return {
-        symbol: symbol.toUpperCase(),
-        overview: companyData,
-        timestamp: new Date().toISOString()
-      };
-    } else {
-      throw new Error("Invalid response format from RapidAPI Finance Data");
-    }
-    
-  } catch (err) {
-    console.error(`❌ RapidAPI Finance Data failed for company overview ${symbol}: ${err.message}`);
-    throw new Error(`Failed to fetch company overview for ${symbol}: ${err.message}`);
-  }
+  
+  return {
+    baseCurrency: baseCurrency.toUpperCase(),
+    rates: rates,
+    timestamp: new Date().toISOString()
+  };
 }

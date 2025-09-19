@@ -11,6 +11,10 @@ import leaderboardRoutes from "./routes/leaderboardRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import currencyRoutes from "./routes/currencyRoutes.js";
 import marketDataRoutes from "./routes/marketDataRoutes.js";
+import stockRoutes from "./routes/stockRoutes.js";
+
+// Import scheduler and scraper
+import { startScheduler, updateStocks } from "./scheduler.js";
 
 dotenv.config();
 const app = express();
@@ -27,6 +31,7 @@ app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/currency", currencyRoutes);
 app.use("/api/market", marketDataRoutes);
+app.use("/api/stocks", stockRoutes);
 
 // Health check endpoint
 app.get("/", (req, res) => {
@@ -41,6 +46,7 @@ app.get("/", (req, res) => {
       admin: "/api/admin",
       currency: "/api/currency",
       market: "/api/market",
+      stocks: "/api/stocks",
     },
   });
 });
@@ -49,6 +55,22 @@ const PORT = process.env.PORT || 5000;
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
-    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    console.log("✅ MongoDB connected successfully");
+    
+    // Start the server
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`📊 NSE Scraping endpoints available at /api/stocks`);
+      
+      // Run initial scrape immediately
+      updateStocks();
+      
+      // Start the scheduler if enabled
+      if (process.env.ENABLE_SCHEDULER === "true") {
+        startScheduler();
+      } else {
+        console.log("⏰ Scheduler disabled. Set ENABLE_SCHEDULER=true to enable automatic scraping");
+      }
+    });
   })
-  .catch((err) => console.error("DB Connection Error:", err));
+  .catch((err) => console.error("❌ DB Connection Error:", err));

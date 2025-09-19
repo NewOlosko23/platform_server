@@ -27,22 +27,32 @@ export const validateTrade = (req, res, next) => {
 
 // Registration validation middleware
 export const validateRegistration = (req, res, next) => {
-  const { username, email, password } = req.body;
+  const { firstName, lastName, email, password } = req.body;
   
-  if (!username || typeof username !== 'string' || username.trim().length < 3) {
+  if (!firstName || typeof firstName !== 'string' || firstName.trim().length < 2) {
     return res.status(400).json({ 
-      message: 'Username is required and must be at least 3 characters long' 
+      success: false,
+      message: 'First name is required and must be at least 2 characters long' 
+    });
+  }
+  
+  if (!lastName || typeof lastName !== 'string' || lastName.trim().length < 2) {
+    return res.status(400).json({ 
+      success: false,
+      message: 'Last name is required and must be at least 2 characters long' 
     });
   }
   
   if (!email || typeof email !== 'string' || !email.includes('@')) {
     return res.status(400).json({ 
+      success: false,
       message: 'Valid email is required' 
     });
   }
   
   if (!password || typeof password !== 'string' || password.length < 6) {
     return res.status(400).json({ 
+      success: false,
       message: 'Password is required and must be at least 6 characters long' 
     });
   }
@@ -56,12 +66,14 @@ export const validateLogin = (req, res, next) => {
   
   if (!email || typeof email !== 'string') {
     return res.status(400).json({ 
+      success: false,
       message: 'Email is required' 
     });
   }
   
   if (!password || typeof password !== 'string') {
     return res.status(400).json({ 
+      success: false,
       message: 'Password is required' 
     });
   }
