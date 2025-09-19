@@ -111,7 +111,10 @@ router.get("/latest", async (req, res) => {
     res.json({
       count: stocks.length,
       data: stocks,
-      lastUpdated: stocks.length > 0 ? stocks[0].scrapedAt : null
+      filters: {
+        limit: Number(limit),
+        sortBy: "scrapedAt"
+      }
     });
     
   } catch (error) {
@@ -403,7 +406,10 @@ router.get("/", async (req, res) => {
     res.json({
       count: stocks.length,
       data: stocks,
-      filters: { ticker, limit, sortBy }
+      filters: { 
+        limit: Number(limit), 
+        sortBy 
+      }
     });
     
   } catch (error) {

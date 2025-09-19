@@ -12,9 +12,11 @@ import adminRoutes from "./routes/adminRoutes.js";
 import currencyRoutes from "./routes/currencyRoutes.js";
 import marketDataRoutes from "./routes/marketDataRoutes.js";
 import stockRoutes from "./routes/stockRoutes.js";
+import marketInsightsRoutes from "./routes/marketInsightsRoutes.js";
+import stockInfoRoutes from "./routes/stockInfoRoutes.js";
 
 // Import scheduler and scraper
-import { startScheduler, updateStocks } from "./scheduler.js";
+import { startScheduler, updateAllData } from "./scheduler.js";
 
 dotenv.config();
 const app = express();
@@ -32,6 +34,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/currency", currencyRoutes);
 app.use("/api/market", marketDataRoutes);
 app.use("/api/stocks", stockRoutes);
+app.use("/api/market-insights", marketInsightsRoutes);
+app.use("/api/stock-info", stockInfoRoutes);
 
 // Health check endpoint
 app.get("/", (req, res) => {
@@ -47,6 +51,8 @@ app.get("/", (req, res) => {
       currency: "/api/currency",
       market: "/api/market",
       stocks: "/api/stocks",
+      marketInsights: "/api/market-insights",
+      stockInfo: "/api/stock-info",
     },
   });
 });
@@ -63,7 +69,7 @@ mongoose
       console.log(`📊 NSE Scraping endpoints available at /api/stocks`);
       
       // Run initial scrape immediately
-      updateStocks();
+      updateAllData();
       
       // Start the scheduler if enabled
       if (process.env.ENABLE_SCHEDULER === "true") {

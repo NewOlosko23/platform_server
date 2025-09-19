@@ -10,6 +10,10 @@ const stockSchema = new mongoose.Schema({
   price: String,
   change: String,
   percent: String,
+  scrapedAt: { 
+    type: Date, 
+    default: Date.now 
+  },
   updatedAt: { 
     type: Date, 
     default: Date.now 
