@@ -2,6 +2,8 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import Portfolio from "../models/Portfolio.js";
+import Trade from "../models/Trade.js";
 
 export const register = async (req, res) => {
   try {
@@ -152,6 +154,55 @@ export const logout = async (req, res) => {
     res.status(500).json({ 
       success: false,
       message: err.message || "Logout failed" 
+    });
+  }
+};
+
+export const resetTradingData = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Start a transaction-like operation to ensure data consistency
+    try {
+      // Reset user balance to initial amount (100,000)
+      await User.findByIdAndUpdate(userId, { balance: 100000 });
+      
+      // Delete all portfolio holdings for the user
+      await Portfolio.deleteMany({ userId });
+      
+      // Delete all trade history for the user
+      await Trade.deleteMany({ userId });
+      
+      // Get updated user data
+      const user = await User.findById(userId);
+      
+      res.json({
+        success: true,
+        message: "Trading data reset successfully",
+        data: {
+          user: {
+            id: user._id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            username: user.username,
+            role: user.role,
+            balance: user.balance,
+            region: user.region,
+            currency: user.currency,
+            createdAt: user.createdAt
+          }
+        }
+      });
+    } catch (dbError) {
+      console.error('Database reset error:', dbError);
+      throw new Error('Failed to reset trading data');
+    }
+  } catch (err) {
+    console.error('Reset trading data error:', err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to reset trading data"
     });
   }
 };

@@ -14,7 +14,7 @@ import marketDataRoutes from "./routes/marketDataRoutes.js";
 import stockRoutes from "./routes/stockRoutes.js";
 import marketInsightsRoutes from "./routes/marketInsightsRoutes.js";
 import stockInfoRoutes from "./routes/stockInfoRoutes.js";
-
+import watchlistRoutes from "./routes/watchlistRoutes.js";
 // Import scheduler and scraper
 import { startScheduler, updateAllData } from "./scheduler.js";
 
@@ -36,6 +36,7 @@ app.use("/api/market", marketDataRoutes);
 app.use("/api/stocks", stockRoutes);
 app.use("/api/market-insights", marketInsightsRoutes);
 app.use("/api/stock-info", stockInfoRoutes);
+app.use("/api/watchlist", watchlistRoutes);
 
 // Health check endpoint
 app.get("/", (req, res) => {
@@ -53,6 +54,7 @@ app.get("/", (req, res) => {
       stocks: "/api/stocks",
       marketInsights: "/api/market-insights",
       stockInfo: "/api/stock-info",
+      watchlist: "/api/watchlist",
     },
   });
 });

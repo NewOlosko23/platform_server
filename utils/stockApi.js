@@ -20,8 +20,19 @@ export async function fetchStockPrice(symbol) {
       return getMockStockData(symbol);
     }
     
-    // Parse the price from string to number
-    const price = parseFloat(stock.price?.replace(/[₹,]/g, '')) || 0;
+    // Parse the price from string to number - handle both string and number formats
+    let price = 0;
+    if (typeof stock.price === 'string') {
+      // If price is a string, remove currency symbols and commas, then parse
+      price = parseFloat(stock.price.replace(/[₹,]/g, '')) || 0;
+    } else if (typeof stock.price === 'number') {
+      // If price is already a number, use it directly
+      price = stock.price;
+    } else {
+      // If price is null, undefined, or other type, default to 0
+      console.warn(`Invalid price format for ${symbol}: ${typeof stock.price} - ${stock.price}`);
+      price = 0;
+    }
     
     return {
       symbol: stock.ticker.toUpperCase(),

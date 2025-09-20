@@ -17,6 +17,11 @@ const UserSchema = new mongoose.Schema({
   region: { type: String, default: "US" },
   currency: { type: String, default: "USD" },
 
+  // Admin management
+  isBanned: { type: Boolean, default: false },
+  bannedAt: { type: Date, default: null },
+  banReason: { type: String, default: null },
+
   createdAt: { type: Date, default: Date.now }
 });
 

@@ -4,7 +4,8 @@ const PortfolioSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   stockSymbol: { type: String, required: true },
   quantity: { type: Number, required: true }, // total held
-  avgBuyPrice: { type: Number, required: true }, // average buy price
+  avgBuyPrice: { type: Number, required: true }, // average buy price (stock price only)
+  avgCostBasis: { type: Number, required: true }, // average cost basis including fees
   updatedAt: { type: Date, default: Date.now }
 });
 

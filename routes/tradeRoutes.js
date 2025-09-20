@@ -1,6 +1,6 @@
 // routes/tradeRoutes.js
 import express from "express";
-import { buyStock, sellStock, getStockPrice, searchStocks, getUserTrades } from "../controllers/tradeController.js";
+import { buyStock, sellStock, getStockPrice, searchStocks, getUserTrades, getTradeFees } from "../controllers/tradeController.js";
 import { authenticate } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -8,6 +8,7 @@ const router = express.Router();
 // Public routes
 router.get("/stock/:symbol", getStockPrice);
 router.get("/search", searchStocks);
+router.get("/fees", getTradeFees); // Get fee information for a trade
 
 // Protected routes
 router.get("/", authenticate, getUserTrades);
