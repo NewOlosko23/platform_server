@@ -6,22 +6,28 @@ const stockSchema = new mongoose.Schema({
     required: true, 
     unique: true 
   },
-  company: String,
-  price: Number,           // Changed from String to Number for normalized data
-  change: Number,          // Changed from String to Number for normalized data
-  percent: String,         // Keep original percent field for backward compatibility
-  percentChange: String,   // New field for normalized percentage change
-  volume: Number,          // New field for normalized volume data
-  scrapedAt: { 
+  name: String,
+  volume: { 
+    type: Number, 
+    default: null 
+  },
+  price: Number,
+  change: { 
+    type: Number, 
+    default: null 
+  },
+  type: { 
+    type: String, 
+    enum: ["gainer", "loser", "neutral"], 
+    default: "neutral" 
+  },
+  url: String,
+  createdAt: { 
     type: Date, 
     default: Date.now 
-  },
-  updatedAt: { 
-    type: Date, 
-    default: Date.now 
-  },
+  }
 }, {
-  timestamps: true
+  timestamps: false // We're using createdAt instead of timestamps
 });
 
 const Stock = mongoose.model("Stock", stockSchema);

@@ -1,19 +1,15 @@
 import Stock from "../models/Stock.js";
-import { normalizeStockData } from "./normalizeStockData.js";
 
 /**
- * Example function showing how to save normalized stock data
- * This demonstrates the flow: fetch → normalize → save
- * @param {Object} apiData - Raw stock data from API/scraper
+ * Save properly formatted stock data to database
+ * Stock data is now correctly formatted from the scraper
+ * @param {Object} stockData - Properly formatted stock data from scraper
  * @returns {Promise<Object>} Saved stock document
  */
-export async function saveStock(apiData) {
+export async function saveStock(stockData) {
   try {
-    // Fix the mismatched fields using normalization
-    const normalized = normalizeStockData(apiData);
-
-    // Save into DB
-    const stock = new Stock(normalized);
+    // Stock data is now properly formatted from the scraper
+    const stock = new Stock(stockData);
     await stock.save();
 
     console.log("✅ Stock saved:", stock);
@@ -25,14 +21,13 @@ export async function saveStock(apiData) {
 }
 
 /**
- * Save multiple stocks with normalization
- * @param {Array} stockArray - Array of raw stock data objects
+ * Save multiple stocks
+ * @param {Array} stockArray - Array of properly formatted stock data objects
  * @returns {Promise<Array>} Array of saved stock documents
  */
 export async function saveStocks(stockArray) {
   try {
-    const normalizedStocks = stockArray.map(stock => normalizeStockData(stock));
-    const savedStocks = await Stock.insertMany(normalizedStocks);
+    const savedStocks = await Stock.insertMany(stockArray);
     
     console.log(`✅ ${savedStocks.length} stocks saved successfully`);
     return savedStocks;

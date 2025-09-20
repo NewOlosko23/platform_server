@@ -3,7 +3,6 @@ import { fetchNSEListings } from "../scraper.js";
 import Stock from "../models/Stock.js";
 import MarketIndex from "../models/MarketIndex.js";
 import TopPerformers from "../models/TopPerformers.js";
-import { normalizeStockDataArray } from "../utils/normalizeStockData.js";
 
 const router = express.Router();
 
@@ -41,15 +40,15 @@ router.post("/scrape", async (req, res) => {
     
     // Save stock data
     if (marketData.stocks.length > 0) {
-      // Normalize the stock data to fix mismatched field mappings
-      const normalizedStocks = normalizeStockDataArray(marketData.stocks.map(stock => ({
+      // Stock data is now properly formatted from the scraper
+      const stocksWithTimestamp = marketData.stocks.map(stock => ({
         ...stock,
-        scrapedAt: new Date()
-      })));
+        createdAt: new Date()
+      }));
       
-      await Stock.insertMany(normalizedStocks);
-      results.stocks = normalizedStocks.length;
-      totalSaved += normalizedStocks.length;
+      await Stock.insertMany(stocksWithTimestamp);
+      results.stocks = stocksWithTimestamp.length;
+      totalSaved += stocksWithTimestamp.length;
     }
     
     // Save top gainers
