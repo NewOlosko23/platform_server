@@ -23,9 +23,11 @@ async function initializeBrowser() {
       fs.mkdirSync(tmpDir, { recursive: true });
     }
 
-    globalBrowser = await puppeteer.launch({
+    // Production environment detection
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
+
+    const launchOptions = {
       headless: true,
-      userDataDir: tmpDir, // Prevents EBUSY errors on Windows
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -33,15 +35,35 @@ async function initializeBrowser() {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--single-process',
+        '--no-zygote',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
       ]
-    });
+    };
+
+    // Only use userDataDir in non-production environments to avoid issues
+    if (!isProduction) {
+      launchOptions.userDataDir = tmpDir;
+    }
+
+    console.log(`🚀 Launching Puppeteer in ${isProduction ? 'production' : 'development'} mode`);
+    globalBrowser = await puppeteer.launch(launchOptions);
     
     isBrowserInitialized = true;
     console.log("✅ Global browser instance initialized");
     return globalBrowser;
   } catch (error) {
     console.error("❌ Failed to initialize browser:", error);
+    console.error("Environment:", {
+      NODE_ENV: process.env.NODE_ENV,
+      RENDER: process.env.RENDER,
+      isProduction: process.env.NODE_ENV === 'production' || process.env.RENDER
+    });
     throw error;
   }
 }
