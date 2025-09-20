@@ -3,6 +3,7 @@ import { scrapeStocks, scrapeTopGainersAndLosers, scrapeMarketInsights } from ".
 import Stock from "./models/Stock.js";
 import TopPerformers from "./models/TopPerformers.js";
 import MarketInsights from "./models/MarketInsights.js";
+import { normalizeStockDataArray } from "./utils/normalizeStockData.js";
 
 /**
  * Update stocks in MongoDB using upsert logic
@@ -10,21 +11,26 @@ import MarketInsights from "./models/MarketInsights.js";
  */
 async function updateStocks() {
   try {
-    const stocks = await scrapeStocks();
+    const rawStocks = await scrapeStocks();
     const scrapedAt = new Date();
     
-    for (let s of stocks) {
+    // Normalize the stock data to fix mismatched field mappings
+    const normalizedStocks = normalizeStockDataArray(rawStocks.map(stock => ({
+      ...stock,
+      scrapedAt: scrapedAt
+    })));
+    
+    for (let s of normalizedStocks) {
       await Stock.findOneAndUpdate(
         { ticker: s.ticker },
         { 
           ...s, 
-          scrapedAt: scrapedAt,
           updatedAt: new Date() 
         },
         { upsert: true, new: true }
       );
     }
-    console.log(`✅ Stocks updated: ${stocks.length} records at ${scrapedAt.toLocaleString()}`);
+    console.log(`✅ Stocks updated: ${normalizedStocks.length} records at ${scrapedAt.toLocaleString()}`);
   } catch (err) {
     console.error("Stocks scraping error:", err);
   }

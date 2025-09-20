@@ -7,9 +7,11 @@ const stockSchema = new mongoose.Schema({
     unique: true 
   },
   company: String,
-  price: String,
-  change: String,
-  percent: String,
+  price: Number,           // Changed from String to Number for normalized data
+  change: Number,          // Changed from String to Number for normalized data
+  percent: String,         // Keep original percent field for backward compatibility
+  percentChange: String,   // New field for normalized percentage change
+  volume: Number,          // New field for normalized volume data
   scrapedAt: { 
     type: Date, 
     default: Date.now 
