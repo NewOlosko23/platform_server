@@ -11,11 +11,24 @@ let isBrowserInitialized = false;
  * Initialize the global browser instance with Windows-safe configuration
  * userDataDir prevents EBUSY errors by avoiding Windows temp folder conflicts
  */
-async function initializeBrowser() {
+async function initializeBrowser(retryCount = 0) {
   if (isBrowserInitialized && globalBrowser) {
     return globalBrowser;
   }
 
+  const maxRetries = 3;
+  
+  // Clean up any existing browser instance
+  if (globalBrowser) {
+    try {
+      await globalBrowser.close();
+    } catch (e) {
+      console.log("🧹 Cleaned up existing browser instance");
+    }
+    globalBrowser = null;
+    isBrowserInitialized = false;
+  }
+  
   try {
     // Ensure tmp directory exists for Puppeteer profile
     const tmpDir = "./tmp/puppeteer-profile";
@@ -34,21 +47,96 @@ async function initializeBrowser() {
         '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
-        '--no-zygote',
         '--disable-gpu',
         '--disable-web-security',
         '--disable-features=VizDisplayCompositor',
-        '--single-process',
-        '--no-zygote',
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding'
-      ]
+        '--disable-renderer-backgrounding',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-images',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--hide-scrollbars',
+        '--mute-audio',
+        '--no-default-browser-check',
+        '--no-pings',
+        '--no-zygote',
+        '--single-process',
+        '--disable-ipc-flooding-protection',
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+        '--disable-domain-reliability',
+        '--disable-component-extensions-with-background-pages',
+        '--disable-background-networking',
+        '--disable-client-side-phishing-detection',
+        '--disable-sync-preferences',
+        '--disable-default-apps',
+        '--disable-component-update',
+        '--disable-background-downloads',
+        '--disable-add-to-shelf',
+        '--disable-breakpad',
+        '--disable-datasaver-prompt',
+        '--disable-desktop-notifications',
+        '--disable-device-discovery-notifications',
+        '--disable-domain-reliability-monitoring',
+        '--disable-features=TranslateUI,BlinkGenPropertyTrees',
+        '--disable-ipc-flooding-protection',
+        '--disable-logging',
+        '--disable-permissions-api',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-renderer-backgrounding',
+        '--disable-speech-api',
+        '--disable-web-resources',
+        '--enable-features=NetworkService,NetworkServiceLogging',
+        '--force-color-profile=srgb',
+        '--metrics-recording-only',
+        '--use-mock-keychain',
+        '--enable-logging',
+        '--log-level=0',
+        '--v=1',
+        '--vmodule=*=3'
+      ],
+      timeout: 60000,
+      protocolTimeout: 60000,
+      ignoreDefaultArgs: ['--disable-extensions'],
+      ignoreHTTPSErrors: true
     };
 
     // Only use userDataDir in non-production environments to avoid issues
     if (!isProduction) {
       launchOptions.userDataDir = tmpDir;
+    }
+
+    // Try to find Chrome executable - prioritize Puppeteer's installed Chrome
+    const possiblePaths = [
+      // Puppeteer's installed Chrome (highest priority)
+      path.join(process.env.HOME || process.env.USERPROFILE, '.cache', 'puppeteer', 'chrome'),
+      // System Chrome installations
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Users\\' + (process.env.USERNAME || 'user') + '\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'
+    ];
+    
+    for (const chromePath of possiblePaths) {
+      if (fs.existsSync(chromePath)) {
+        // If it's a directory, look for chrome.exe inside
+        if (fs.statSync(chromePath).isDirectory()) {
+          const chromeExe = path.join(chromePath, 'chrome.exe');
+          if (fs.existsSync(chromeExe)) {
+            launchOptions.executablePath = chromeExe;
+            console.log(`🔍 Found Puppeteer Chrome at: ${chromeExe}`);
+            break;
+          }
+        } else if (chromePath.endsWith('.exe')) {
+          launchOptions.executablePath = chromePath;
+          console.log(`🔍 Found system Chrome at: ${chromePath}`);
+          break;
+        }
+      }
     }
 
     console.log(`🚀 Launching Puppeteer in ${isProduction ? 'production' : 'development'} mode`);
@@ -64,6 +152,55 @@ async function initializeBrowser() {
       RENDER: process.env.RENDER,
       isProduction: process.env.NODE_ENV === 'production' || process.env.RENDER
     });
+    
+    // Retry logic for Windows compatibility issues
+    if (retryCount < maxRetries) {
+      console.log(`🔄 Retrying browser initialization (attempt ${retryCount + 1}/${maxRetries})...`);
+      
+      // On second retry, try with minimal configuration
+      if (retryCount === 1) {
+        console.log("🔧 Trying with minimal Puppeteer configuration...");
+        try {
+          const minimalOptions = {
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+          };
+          
+          // Try to find Chrome executable for minimal config too
+          const possiblePaths = [
+            path.join(process.env.HOME || process.env.USERPROFILE, '.cache', 'puppeteer', 'chrome'),
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+          ];
+          
+          for (const chromePath of possiblePaths) {
+            if (fs.existsSync(chromePath)) {
+              if (fs.statSync(chromePath).isDirectory()) {
+                const chromeExe = path.join(chromePath, 'chrome.exe');
+                if (fs.existsSync(chromeExe)) {
+                  minimalOptions.executablePath = chromeExe;
+                  break;
+                }
+              } else if (chromePath.endsWith('.exe')) {
+                minimalOptions.executablePath = chromePath;
+                break;
+              }
+            }
+          }
+          
+          globalBrowser = await puppeteer.launch(minimalOptions);
+          isBrowserInitialized = true;
+          console.log("✅ Global browser instance initialized with minimal config");
+          return globalBrowser;
+        } catch (minimalError) {
+          console.log("❌ Minimal configuration also failed:", minimalError.message);
+        }
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1))); // Exponential backoff
+      return initializeBrowser(retryCount + 1);
+    }
+    
     throw error;
   }
 }
