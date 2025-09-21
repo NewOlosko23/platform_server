@@ -10,6 +10,12 @@ import Stock from '../models/Stock.js';
  */
 export async function fetchStockPrice(symbol) {
   try {
+    // Handle undefined or null symbols
+    if (!symbol || typeof symbol !== 'string') {
+      console.warn(`Invalid symbol provided to fetchStockPrice:`, symbol);
+      return getMockStockData(symbol);
+    }
+    
     // Find the latest stock data from MongoDB
     const stock = await Stock.findOne({ 
       ticker: new RegExp("^" + symbol + "$", "i") 
@@ -54,6 +60,17 @@ export async function fetchStockPrice(symbol) {
  * @returns {Object} Mock stock data
  */
 export function getMockStockData(symbol) {
+  // Handle undefined or null symbols
+  if (!symbol || typeof symbol !== 'string') {
+    console.warn('Invalid symbol provided to getMockStockData:', symbol);
+    return {
+      symbol: 'UNKNOWN',
+      price: 0,
+      volume: 0,
+      timestamp: new Date().toISOString()
+    };
+  }
+  
   // Generate consistent mock data based on symbol
   const basePrice = Math.abs(symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 1000 + 50;
   const variation = (Math.sin(symbol.length) * 0.1 + 1); // Small variation based on symbol

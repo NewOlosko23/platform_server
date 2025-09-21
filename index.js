@@ -5,7 +5,7 @@ import cors from "cors";
 
 // Import routes
 import authRoutes from "./routes/authRoutes.js";
-import tradeRoutes from "./routes/tradeRoutes.js";
+import unifiedTradeRoutes from "./routes/unifiedTradeRoutes.js";
 import portfolioRoutes from "./routes/portfolioRoutes.js";
 import leaderboardRoutes from "./routes/leaderboardRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
@@ -15,8 +15,10 @@ import stockRoutes from "./routes/stockRoutes.js";
 import marketInsightsRoutes from "./routes/marketInsightsRoutes.js";
 import stockInfoRoutes from "./routes/stockInfoRoutes.js";
 import watchlistRoutes from "./routes/watchlistRoutes.js";
+import assetsRoutes from "./routes/assetsRoutes.js";
 // Import scheduler and scraper
 import { startScheduler, updateAllData } from "./scheduler.js";
+import { startCombinedScheduler, triggerManualUpdate } from "./scheduler/multiAssetScheduler.js";
 
 dotenv.config();
 const app = express();
@@ -27,7 +29,7 @@ app.use(cors());
 
 // Routes
 app.use("/api/auth", authRoutes);
-app.use("/api/trades", tradeRoutes);
+app.use("/api/trades", unifiedTradeRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/admin", adminRoutes);
@@ -37,6 +39,7 @@ app.use("/api/stocks", stockRoutes);
 app.use("/api/market-insights", marketInsightsRoutes);
 app.use("/api/stock-info", stockInfoRoutes);
 app.use("/api/watchlist", watchlistRoutes);
+app.use("/api/assets", assetsRoutes);
 
 // Health check endpoint
 app.get("/", (req, res) => {
@@ -55,6 +58,7 @@ app.get("/", (req, res) => {
       marketInsights: "/api/market-insights",
       stockInfo: "/api/stock-info",
       watchlist: "/api/watchlist",
+      assets: "/api/assets",
     },
   });
 });
@@ -68,14 +72,18 @@ mongoose
     // Start the server
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📊 NSE Scraping endpoints available at /api/stocks`);
+      console.log(`📊 Trading Platform - All endpoints available`);
       
-      // Run initial scrape immediately
-      updateAllData();
+      // Run initial scrape immediately for all assets
+      console.log("🔄 Running initial data fetch for all assets...");
+      triggerManualUpdate("all").catch(error => {
+        console.error("❌ Initial data fetch failed:", error);
+      });
       
-      // Start the scheduler if enabled
+      // Start the asset scheduler if enabled
       if (process.env.ENABLE_SCHEDULER === "true") {
-        startScheduler();
+        startCombinedScheduler();
+        console.log("✅ Asset scheduler started");
       } else {
         console.log("⏰ Scheduler disabled. Set ENABLE_SCHEDULER=true to enable automatic scraping");
       }

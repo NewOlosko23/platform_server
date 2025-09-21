@@ -2,10 +2,16 @@ import mongoose from "mongoose";
 
 const TradeSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  stockSymbol: { type: String, required: true },
+  assetType: { 
+    type: String, 
+    enum: ["stock", "crypto", "currency"], 
+    required: true,
+    index: true
+  },
+  assetSymbol: { type: String, required: true, index: true }, // Changed from stockSymbol to assetSymbol
   type: { type: String, enum: ["buy", "sell"], required: true },
   quantity: { type: Number, required: true },
-  price: { type: Number, required: true }, // price per stock
+  price: { type: Number, required: true }, // price per asset
   
   // Fee tracking fields
   platformFee: { type: Number, default: 0 },
@@ -24,5 +30,8 @@ const TradeSchema = new mongoose.Schema({
   
   timestamp: { type: Date, default: Date.now }
 });
+
+// Compound index for efficient querying
+TradeSchema.index({ userId: 1, assetType: 1, assetSymbol: 1, timestamp: -1 });
 
 export default mongoose.model("Trade", TradeSchema);

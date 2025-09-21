@@ -7,28 +7,71 @@ const watchlistSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  assetType: {
+    type: String,
+    required: true,
+    enum: ['stock', 'crypto', 'currency'],
+    index: true
+  },
   symbol: {
     type: String,
     required: true,
     uppercase: true,
     trim: true
   },
-  company: {
+  name: {
     type: String,
     required: true,
     trim: true
   },
+  // Price when added to watchlist
+  addedPrice: {
+    type: Number,
+    required: true
+  },
+  // Current market price
   currentPrice: {
     type: Number,
     default: 0
   },
-  change: {
+  // Price change since adding to watchlist
+  priceChange: {
     type: Number,
     default: 0
   },
-  changePercent: {
+  // Percentage change since adding to watchlist
+  priceChangePercent: {
     type: Number,
     default: 0
+  },
+  // Daily change (for display purposes)
+  dailyChange: {
+    type: Number,
+    default: 0
+  },
+  dailyChangePercent: {
+    type: Number,
+    default: 0
+  },
+  // Additional metadata for different asset types
+  metadata: {
+    // For stocks
+    company: String,
+    exchange: String,
+    sector: String,
+    
+    // For crypto
+    baseAsset: String,
+    quoteAsset: String,
+    
+    // For currencies
+    baseCurrency: String,
+    quoteCurrency: String,
+    
+    // Common fields
+    volume: Number,
+    marketCap: Number,
+    source: String
   },
   addedAt: {
     type: Date,
@@ -42,8 +85,8 @@ const watchlistSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Compound index to ensure unique symbol per user
-watchlistSchema.index({ userId: 1, symbol: 1 }, { unique: true });
+// Compound index to ensure unique symbol per user per asset type
+watchlistSchema.index({ userId: 1, assetType: 1, symbol: 1 }, { unique: true });
 
 // Update lastUpdated when document is modified
 watchlistSchema.pre('save', function(next) {

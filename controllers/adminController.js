@@ -7,6 +7,7 @@ import TopPerformers from "../models/TopPerformers.js";
 import MarketInsights from "../models/MarketInsights.js";
 import SystemSettings from "../models/SystemSettings.js";
 import ActivityLog from "../models/ActivityLog.js";
+import OHLCV from "../models/OHLCV.js";
 
 // Get all users with pagination and filtering
 export const getAllUsers = async (req, res) => {
@@ -312,17 +313,37 @@ export const getSystemHealth = async (req, res) => {
       latestMarketInsights,
       latestTopPerformers,
       totalStockRecords,
-      totalMarketInsightsRecords
+      totalMarketInsightsRecords,
+      // Assets health data
+      latestOHLCVUpdate,
+      totalOHLCVRecords,
+      assetTypeCounts
     ] = await Promise.all([
       Stock.findOne().sort({ scrapedAt: -1 }),
       MarketInsights.findOne().sort({ scrapedAt: -1 }),
       TopPerformers.findOne().sort({ scrapedAt: -1 }),
       Stock.countDocuments(),
-      MarketInsights.countDocuments()
+      MarketInsights.countDocuments(),
+      // Assets data
+      OHLCV.findOne().sort({ timestamp: -1 }),
+      OHLCV.countDocuments(),
+      OHLCV.aggregate([
+        { $group: { _id: "$type", count: { $sum: 1 }, uniqueSymbols: { $addToSet: "$symbol" } } },
+        { $project: { type: "$_id", totalRecords: "$count", uniqueSymbols: { $size: "$uniqueSymbols" } } }
+      ])
     ]);
 
     const now = new Date();
     const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+    // Process asset type counts
+    const assetsHealth = {};
+    assetTypeCounts.forEach(asset => {
+      assetsHealth[asset.type] = {
+        totalRecords: asset.totalRecords,
+        uniqueSymbols: asset.uniqueSymbols
+      };
+    });
 
     res.json({
       success: true,
@@ -341,6 +362,12 @@ export const getSystemHealth = async (req, res) => {
           topPerformers: {
             lastUpdate: latestTopPerformers?.scrapedAt,
             isRecent: latestTopPerformers?.scrapedAt > fiveMinutesAgo
+          },
+          assets: {
+            lastUpdate: latestOHLCVUpdate?.timestamp,
+            isRecent: latestOHLCVUpdate?.timestamp > fiveMinutesAgo,
+            totalRecords: totalOHLCVRecords,
+            byType: assetsHealth
           }
         },
         systemStatus: {
