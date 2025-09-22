@@ -20,17 +20,45 @@ async function updateStocks() {
     // Stock data is now properly formatted from the scraper
     const stocksWithTimestamp = stocks.map(stock => ({
       ...stock,
-      createdAt: scrapedAt
+      createdAt: scrapedAt,
+      // Ensure changePercent is a number if it exists
+      changePercent: stock.changePercent ? parseFloat(stock.changePercent) : null
     }));
     
-    for (let stock of stocksWithTimestamp) {
-      await Stock.findOneAndUpdate(
-        { ticker: stock.ticker },
-        stock,
-        { upsert: true, new: true }
+    console.log(`📊 Processing ${stocksWithTimestamp.length} stocks in batches...`);
+    
+    // Process stocks in batches of 10 to avoid timeouts
+    const batchSize = 10;
+    let processedCount = 0;
+    
+    for (let i = 0; i < stocksWithTimestamp.length; i += batchSize) {
+      const batch = stocksWithTimestamp.slice(i, i + batchSize);
+      
+      // Process batch in parallel with Promise.allSettled to handle individual failures
+      const batchPromises = batch.map(stock => 
+        Stock.findOneAndUpdate(
+          { ticker: stock.ticker },
+          stock,
+          { upsert: true, new: true }
+        ).catch(error => {
+          console.error(`❌ Error updating stock ${stock.ticker}:`, error.message);
+          return null;
+        })
       );
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+      const successfulUpdates = batchResults.filter(result => result.status === 'fulfilled' && result.value !== null).length;
+      processedCount += successfulUpdates;
+      
+      console.log(`📈 Batch ${Math.floor(i/batchSize) + 1}: ${successfulUpdates}/${batch.length} stocks updated`);
+      
+      // Small delay between batches to prevent overwhelming the database
+      if (i + batchSize < stocksWithTimestamp.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
     }
-    console.log(`✅ Stocks updated: ${stocksWithTimestamp.length} records at ${scrapedAt.toLocaleString()}`);
+    
+    console.log(`✅ Stocks updated: ${processedCount}/${stocksWithTimestamp.length} records at ${scrapedAt.toLocaleString()}`);
   } catch (err) {
     console.error("❌ Stocks scraping error:", err);
     throw err; // Re-throw to handle in updateAllData
@@ -52,9 +80,9 @@ async function updateTopPerformers() {
     const gainerDocs = topGainers.map(gainer => ({
       type: 'gainers',
       ticker: gainer.ticker,
-      price: parseFloat(gainer.price?.replace(/,/g, '') || 0),
-      change: parseFloat(gainer.change?.replace(/,/g, '') || 0),
-      changePercent: parseFloat(gainer.change?.replace(/,/g, '') || 0), // You might want to calculate this properly
+      price: gainer.price || 0,
+      change: gainer.changePercent || 0, // Using changePercent as the change value
+      changePercent: gainer.changePercent || 0,
       rank: gainer.rank,
       scrapedAt: scrapedAt
     }));
@@ -63,9 +91,9 @@ async function updateTopPerformers() {
     const loserDocs = bottomLosers.map(loser => ({
       type: 'losers',
       ticker: loser.ticker,
-      price: parseFloat(loser.price?.replace(/,/g, '') || 0),
-      change: parseFloat(loser.change?.replace(/,/g, '') || 0),
-      changePercent: parseFloat(loser.change?.replace(/,/g, '') || 0), // You might want to calculate this properly
+      price: loser.price || 0,
+      change: loser.changePercent || 0, // Using changePercent as the change value
+      changePercent: loser.changePercent || 0,
       rank: loser.rank,
       scrapedAt: scrapedAt
     }));

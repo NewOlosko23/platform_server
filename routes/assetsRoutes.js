@@ -30,7 +30,7 @@ router.get("/latest/:type/:symbol", async (req, res) => {
       });
     }
     
-    // Get latest price from MongoDB (not from external APIs)
+    // Get latest price from MongoDB for all asset types
     const latest = await OHLCV.getLatestPrice(type, symbol);
     
     if (!latest) {
@@ -46,6 +46,8 @@ router.get("/latest/:type/:symbol", async (req, res) => {
         type: latest.type,
         symbol: latest.symbol,
         price: latest.valueKES,
+        volume: latest.volume || null,
+        change: latest.metadata?.change || null,
         timestamp: latest.timestamp,
         source: latest.source,
         lastUpdated: latest.lastUpdated,
@@ -196,7 +198,7 @@ router.get("/list/:type", async (req, res) => {
       });
     }
     
-    // Get all available symbols for this type
+    // Get all available symbols for this type from database
     const symbols = await OHLCV.distinct("symbol", { type: type });
     
     res.json({

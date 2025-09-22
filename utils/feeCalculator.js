@@ -1,5 +1,38 @@
 // utils/feeCalculator.js
 // Platform fee and tax calculation utilities
+import SystemSettings from "../models/SystemSettings.js";
+
+/**
+ * Get fee configuration from database
+ * @returns {Object} Fee configuration object
+ */
+async function getFeeConfiguration() {
+  try {
+    let settings = await SystemSettings.findOne();
+    
+    // If no settings exist, create default settings
+    if (!settings) {
+      settings = new SystemSettings();
+      await settings.save();
+    }
+    
+    return {
+      platformFeePercentage: settings.platformFeePercentage || 0.5,
+      taxPercentage: settings.taxPercentage || 0.1,
+      minimumFee: settings.minimumFee || 10,
+      maximumFee: settings.maximumFee || 1000
+    };
+  } catch (error) {
+    console.error('Error fetching fee configuration:', error);
+    // Fallback to default values
+    return {
+      platformFeePercentage: 0.5,
+      taxPercentage: 0.1,
+      minimumFee: 10,
+      maximumFee: 1000
+    };
+  }
+}
 
 /**
  * Calculate platform fees for a trade
@@ -7,12 +40,13 @@
  * @param {string} tradeType - 'buy' or 'sell'
  * @returns {Object} Fee breakdown object
  */
-export function calculateFees(tradeAmount, tradeType = 'buy') {
-  // Get fee configuration from environment variables
-  const PLATFORM_FEE_PERCENTAGE = parseFloat(process.env.PLATFORM_FEE_PERCENTAGE) || 0.5; // 0.5% default
-  const TAX_PERCENTAGE = parseFloat(process.env.TAX_PERCENTAGE) || 0.1; // 0.1% default
-  const MINIMUM_FEE = parseFloat(process.env.MINIMUM_FEE) || 10; // KSh 10 minimum
-  const MAXIMUM_FEE = parseFloat(process.env.MAXIMUM_FEE) || 1000; // KSh 1000 maximum
+export async function calculateFees(tradeAmount, tradeType = 'buy') {
+  // Get fee configuration from database
+  const feeConfig = await getFeeConfiguration();
+  const PLATFORM_FEE_PERCENTAGE = feeConfig.platformFeePercentage;
+  const TAX_PERCENTAGE = feeConfig.taxPercentage;
+  const MINIMUM_FEE = feeConfig.minimumFee;
+  const MAXIMUM_FEE = feeConfig.maximumFee;
 
   // Calculate platform fee
   const platformFee = Math.max(
@@ -56,15 +90,26 @@ export function calculateFees(tradeAmount, tradeType = 'buy') {
 }
 
 /**
- * Get current fee configuration
+ * Get current fee configuration (synchronous version for API responses)
  * @returns {Object} Current fee settings
  */
-export function getFeeConfiguration() {
+export async function getCurrentFeeConfiguration() {
+  return await getFeeConfiguration();
+}
+
+/**
+ * Get fee configuration synchronously (cached version)
+ * This should be used when you need immediate access to fee config
+ * @returns {Object} Current fee settings
+ */
+export function getFeeConfigurationSync() {
+  // This is a fallback for cases where we can't use async
+  // In production, you might want to implement caching here
   return {
-    platformFeePercentage: parseFloat(process.env.PLATFORM_FEE_PERCENTAGE) || 0.5,
-    taxPercentage: parseFloat(process.env.TAX_PERCENTAGE) || 0.1,
-    minimumFee: parseFloat(process.env.MINIMUM_FEE) || 10,
-    maximumFee: parseFloat(process.env.MAXIMUM_FEE) || 1000
+    platformFeePercentage: 0.5,
+    taxPercentage: 0.1,
+    minimumFee: 10,
+    maximumFee: 1000
   };
 }
 

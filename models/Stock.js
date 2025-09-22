@@ -16,6 +16,10 @@ const stockSchema = new mongoose.Schema({
     type: Number, 
     default: null 
   },
+  changePercent: { 
+    type: Number, 
+    default: null 
+  },
   type: { 
     type: String, 
     enum: ["gainer", "loser", "neutral"], 

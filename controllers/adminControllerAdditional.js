@@ -2,6 +2,7 @@
 import SystemSettings from "../models/SystemSettings.js";
 import ActivityLog from "../models/ActivityLog.js";
 import User from "../models/User.js";
+import { getCurrentFeeConfiguration } from "../utils/feeCalculator.js";
 
 // Get system settings
 export const getSystemSettings = async (req, res) => {
@@ -201,5 +202,117 @@ export const createActivityLog = async (userId, activityType, description, detai
     await activityLog.save();
   } catch (err) {
     console.error('Error creating activity log:', err);
+  }
+};
+
+// Get fee configuration
+export const getFeeSettings = async (req, res) => {
+  try {
+    const feeConfig = await getCurrentFeeConfiguration();
+    
+    res.json({
+      success: true,
+      data: {
+        feeSettings: feeConfig
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false,
+      error: err.message 
+    });
+  }
+};
+
+// Update fee configuration
+export const updateFeeSettings = async (req, res) => {
+  try {
+    const { platformFeePercentage, taxPercentage, minimumFee, maximumFee } = req.body;
+    const adminId = req.user._id;
+    
+    // Validate fee settings
+    if (platformFeePercentage !== undefined && (platformFeePercentage < 0 || platformFeePercentage > 10)) {
+      return res.status(400).json({
+        success: false,
+        message: "Platform fee percentage must be between 0 and 10"
+      });
+    }
+    
+    if (taxPercentage !== undefined && (taxPercentage < 0 || taxPercentage > 5)) {
+      return res.status(400).json({
+        success: false,
+        message: "Tax percentage must be between 0 and 5"
+      });
+    }
+    
+    if (minimumFee !== undefined && minimumFee < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Minimum fee must be 0 or greater"
+      });
+    }
+    
+    if (maximumFee !== undefined && maximumFee < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Maximum fee must be 0 or greater"
+      });
+    }
+    
+    if (minimumFee !== undefined && maximumFee !== undefined && minimumFee > maximumFee) {
+      return res.status(400).json({
+        success: false,
+        message: "Minimum fee cannot be greater than maximum fee"
+      });
+    }
+    
+    let settings = await SystemSettings.findOne();
+    
+    if (!settings) {
+      settings = new SystemSettings();
+    }
+    
+    // Update fee settings
+    if (platformFeePercentage !== undefined) settings.platformFeePercentage = platformFeePercentage;
+    if (taxPercentage !== undefined) settings.taxPercentage = taxPercentage;
+    if (minimumFee !== undefined) settings.minimumFee = minimumFee;
+    if (maximumFee !== undefined) settings.maximumFee = maximumFee;
+    
+    settings.updatedBy = adminId;
+    settings.lastUpdated = new Date();
+    
+    await settings.save();
+    
+    // Log the activity
+    const activityLog = new ActivityLog({
+      userId: adminId,
+      action: 'update_fee_settings',
+      details: {
+        platformFeePercentage: settings.platformFeePercentage,
+        taxPercentage: settings.taxPercentage,
+        minimumFee: settings.minimumFee,
+        maximumFee: settings.maximumFee
+      },
+      timestamp: new Date()
+    });
+    await activityLog.save();
+    
+    res.json({
+      success: true,
+      message: 'Fee settings updated successfully',
+      data: {
+        feeSettings: {
+          platformFeePercentage: settings.platformFeePercentage,
+          taxPercentage: settings.taxPercentage,
+          minimumFee: settings.minimumFee,
+          maximumFee: settings.maximumFee
+        }
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false,
+      error: err.message 
+    });
   }
 };

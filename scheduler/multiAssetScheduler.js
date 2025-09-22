@@ -1,6 +1,7 @@
 import cron from "node-cron";
 import { processAndStoreCryptoData } from "../services/cryptoFetcher.js";
 import { processAndStoreFXData } from "../services/fxFetcher.js";
+import { processAndStoreStockData } from "../services/stockFetcher.js";
 import { updateAllData as updateNSEData } from "../scheduler.js"; // Existing NSE scraper
 
 // Flag to prevent overlapping executions
@@ -32,6 +33,9 @@ async function updateAllAssetData() {
     
     console.log("📈 Updating NSE stocks data...");
     await updateNSEData();
+    
+    console.log("📊 Processing stock data for OHLCV collection...");
+    await processAndStoreStockData();
     
     const endTime = new Date();
     const duration = (endTime - startTime) / 1000;

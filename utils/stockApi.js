@@ -26,14 +26,14 @@ export async function fetchStockPrice(symbol) {
       return getMockStockData(symbol);
     }
     
-    // Parse the price from string to number - handle both string and number formats
+    // Parse the price from string to number and round to 2 decimal places
     let price = 0;
     if (typeof stock.price === 'string') {
-      // If price is a string, remove currency symbols and commas, then parse
-      price = parseFloat(stock.price.replace(/[₹,]/g, '')) || 0;
+      // If price is a string, remove currency symbols and commas, then parse and round
+      price = Math.round((parseFloat(stock.price.replace(/[₹,]/g, '')) || 0) * 100) / 100;
     } else if (typeof stock.price === 'number') {
-      // If price is already a number, use it directly
-      price = stock.price;
+      // If price is already a number, round to 2 decimal places
+      price = Math.round(stock.price * 100) / 100;
     } else {
       // If price is null, undefined, or other type, default to 0
       console.warn(`Invalid price format for ${symbol}: ${typeof stock.price} - ${stock.price}`);
@@ -46,7 +46,7 @@ export async function fetchStockPrice(symbol) {
       volume: stock.volume || 0,
       timestamp: stock.scrapedAt || new Date().toISOString(),
       change: stock.change,
-      changePercent: stock.percent
+      changePercent: stock.changePercent || stock.percent
     };
   } catch (error) {
     console.error(`Error fetching stock price for ${symbol} from database:`, error.message);

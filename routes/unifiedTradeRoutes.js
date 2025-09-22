@@ -6,7 +6,8 @@ import {
   getAssetPrice, 
   searchAssets, 
   getUserTrades,
-  getTradeFees 
+  getTradeFees,
+  validateAssetPrice 
 } from "../controllers/unifiedTradeController.js";
 import { authenticate } from "../middleware/authMiddleware.js";
 
@@ -14,6 +15,7 @@ const router = express.Router();
 
 // Public routes (no authentication required)
 router.get("/price/:assetType/:symbol", getAssetPrice);
+router.get("/validate-price", validateAssetPrice);
 router.get("/search", searchAssets);
 router.get("/fees", getTradeFees);
 

@@ -13,6 +13,14 @@ const stockInfoSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: {}
   },
+  liveTradingFeed: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  growthValuation: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
   performance: {
     type: mongoose.Schema.Types.Mixed,
     default: {}
@@ -25,6 +33,10 @@ const stockInfoSchema = new mongoose.Schema({
     changePct: String
   }],
   profile: {
+    type: mongoose.Schema.Types.Mixed,
+    default: {}
+  },
+  factsheet: {
     type: mongoose.Schema.Types.Mixed,
     default: {}
   },

@@ -8,51 +8,21 @@ let globalBrowser = null;
 let isBrowserInitialized = false;
 
 /**
- * Initialize the global browser instance with Windows-safe configuration
- * userDataDir prevents EBUSY errors by avoiding Windows temp folder conflicts
+ * Initialize a new browser instance for each scraping operation
+ * This prevents conflicts and resource leaks
  */
-async function initializeBrowser(retryCount = 0) {
-  if (isBrowserInitialized && globalBrowser) {
-    return globalBrowser;
-  }
-
-  const maxRetries = 3;
-  
-  // Clean up any existing browser instance
-  if (globalBrowser) {
-    try {
-      await globalBrowser.close();
-    } catch (e) {
-      console.log("🧹 Cleaned up existing browser instance");
-    }
-    globalBrowser = null;
-    isBrowserInitialized = false;
-  }
-  
+async function createBrowser() {
   try {
-    // Ensure tmp directory exists for Puppeteer profile
-    const tmpDir = "./tmp/puppeteer-profile";
-    if (!fs.existsSync(tmpDir)) {
-      fs.mkdirSync(tmpDir, { recursive: true });
-    }
-
-    // Production environment detection
-    const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER;
-
+    // Simple, reliable browser configuration
     const launchOptions = {
       headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
         '--disable-gpu',
         '--disable-web-security',
         '--disable-features=VizDisplayCompositor',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
         '--disable-extensions',
         '--disable-plugins',
         '--disable-images',
@@ -63,17 +33,13 @@ async function initializeBrowser(retryCount = 0) {
         '--mute-audio',
         '--no-default-browser-check',
         '--no-pings',
-        '--no-zygote',
-        '--single-process',
-        '--disable-ipc-flooding-protection',
-        '--disable-hang-monitor',
-        '--disable-prompt-on-repost',
-        '--disable-domain-reliability',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
         '--disable-component-extensions-with-background-pages',
         '--disable-background-networking',
         '--disable-client-side-phishing-detection',
         '--disable-sync-preferences',
-        '--disable-default-apps',
         '--disable-component-update',
         '--disable-background-downloads',
         '--disable-add-to-shelf',
@@ -88,34 +54,21 @@ async function initializeBrowser(retryCount = 0) {
         '--disable-permissions-api',
         '--disable-popup-blocking',
         '--disable-prompt-on-repost',
-        '--disable-renderer-backgrounding',
         '--disable-speech-api',
         '--disable-web-resources',
         '--enable-features=NetworkService,NetworkServiceLogging',
         '--force-color-profile=srgb',
         '--metrics-recording-only',
-        '--use-mock-keychain',
-        '--enable-logging',
-        '--log-level=0',
-        '--v=1',
-        '--vmodule=*=3'
+        '--use-mock-keychain'
       ],
-      timeout: 60000,
-      protocolTimeout: 60000,
+      timeout: 30000,
+      protocolTimeout: 30000,
       ignoreDefaultArgs: ['--disable-extensions'],
       ignoreHTTPSErrors: true
     };
 
-    // Only use userDataDir in non-production environments to avoid issues
-    if (!isProduction) {
-      launchOptions.userDataDir = tmpDir;
-    }
-
-    // Try to find Chrome executable - prioritize Puppeteer's installed Chrome
+    // Try to find Chrome executable
     const possiblePaths = [
-      // Puppeteer's installed Chrome (highest priority)
-      path.join(process.env.HOME || process.env.USERPROFILE, '.cache', 'puppeteer', 'chrome'),
-      // System Chrome installations
       'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
       'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
       'C:\\Users\\' + (process.env.USERNAME || 'user') + '\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'
@@ -123,84 +76,18 @@ async function initializeBrowser(retryCount = 0) {
     
     for (const chromePath of possiblePaths) {
       if (fs.existsSync(chromePath)) {
-        // If it's a directory, look for chrome.exe inside
-        if (fs.statSync(chromePath).isDirectory()) {
-          const chromeExe = path.join(chromePath, 'chrome.exe');
-          if (fs.existsSync(chromeExe)) {
-            launchOptions.executablePath = chromeExe;
-            console.log(`🔍 Found Puppeteer Chrome at: ${chromeExe}`);
-            break;
-          }
-        } else if (chromePath.endsWith('.exe')) {
-          launchOptions.executablePath = chromePath;
-          console.log(`🔍 Found system Chrome at: ${chromePath}`);
-          break;
-        }
+        launchOptions.executablePath = chromePath;
+        console.log(`🔍 Found Chrome at: ${chromePath}`);
+        break;
       }
     }
 
-    console.log(`🚀 Launching Puppeteer in ${isProduction ? 'production' : 'development'} mode`);
-    globalBrowser = await puppeteer.launch(launchOptions);
-    
-    isBrowserInitialized = true;
-    console.log("✅ Global browser instance initialized");
-    return globalBrowser;
+    console.log("🚀 Launching Puppeteer browser...");
+    const browser = await puppeteer.launch(launchOptions);
+    console.log("✅ Browser launched successfully");
+    return browser;
   } catch (error) {
-    console.error("❌ Failed to initialize browser:", error);
-    console.error("Environment:", {
-      NODE_ENV: process.env.NODE_ENV,
-      RENDER: process.env.RENDER,
-      isProduction: process.env.NODE_ENV === 'production' || process.env.RENDER
-    });
-    
-    // Retry logic for Windows compatibility issues
-    if (retryCount < maxRetries) {
-      console.log(`🔄 Retrying browser initialization (attempt ${retryCount + 1}/${maxRetries})...`);
-      
-      // On second retry, try with minimal configuration
-      if (retryCount === 1) {
-        console.log("🔧 Trying with minimal Puppeteer configuration...");
-        try {
-          const minimalOptions = {
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
-          };
-          
-          // Try to find Chrome executable for minimal config too
-          const possiblePaths = [
-            path.join(process.env.HOME || process.env.USERPROFILE, '.cache', 'puppeteer', 'chrome'),
-            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
-          ];
-          
-          for (const chromePath of possiblePaths) {
-            if (fs.existsSync(chromePath)) {
-              if (fs.statSync(chromePath).isDirectory()) {
-                const chromeExe = path.join(chromePath, 'chrome.exe');
-                if (fs.existsSync(chromeExe)) {
-                  minimalOptions.executablePath = chromeExe;
-                  break;
-                }
-              } else if (chromePath.endsWith('.exe')) {
-                minimalOptions.executablePath = chromePath;
-                break;
-              }
-            }
-          }
-          
-          globalBrowser = await puppeteer.launch(minimalOptions);
-          isBrowserInitialized = true;
-          console.log("✅ Global browser instance initialized with minimal config");
-          return globalBrowser;
-        } catch (minimalError) {
-          console.log("❌ Minimal configuration also failed:", minimalError.message);
-        }
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1))); // Exponential backoff
-      return initializeBrowser(retryCount + 1);
-    }
-    
+    console.error("❌ Failed to launch browser:", error.message);
     throw error;
   }
 }
@@ -223,17 +110,23 @@ export async function closeGlobalBrowser() {
 
 /**
  * Enhanced NSE stock scraper that extracts comprehensive stock data
- * Uses global browser instance to prevent Windows EBUSY errors
+ * Creates a new browser instance for each scraping operation
  * @returns {Promise<Array>} Array of stock objects with ticker, name, volume, price, change, type, url
  */
 export async function scrapeStocks() {
+  let browser = null;
   let page = null;
   try {
-    const browser = await initializeBrowser();
+    browser = await createBrowser();
     page = await browser.newPage();
     
-    await page.goto("https://afx.kwayisi.org/nse/", { waitUntil: "networkidle2" });
+    console.log("📊 Navigating to NSE website...");
+    await page.goto("https://afx.kwayisi.org/nse/", { 
+      waitUntil: "networkidle2",
+      timeout: 30000 
+    });
 
+    console.log("🔍 Extracting stock data...");
     const data = await page.evaluate(() => {
       const rows = document.querySelectorAll("body > div > div > div > main > article > div.t > table tbody tr");
       return Array.from(rows).map(row => {
@@ -252,21 +145,33 @@ export async function scrapeStocks() {
         const volumeText = tds[2]?.innerText.replace(/,/g, "") || null;
         const volume = volumeText ? parseInt(volumeText, 10) : null;
 
-        // Extract price (parse as float)
+        // Extract price (parse as float and round to 2 decimal places)
         const priceText = tds[3]?.innerText.trim() || null;
-        const price = priceText ? parseFloat(priceText) : null;
+        const price = priceText ? Math.round(parseFloat(priceText) * 100) / 100 : null;
 
         // Extract change and determine type
         const changeElement = tds[4];
         const changeText = changeElement?.innerText.trim() || null;
         const changeClass = changeElement?.className || "";
         
-        // Parse change value (remove + sign and parse as float)
-        const change = changeText ? parseFloat(changeText.replace("+", "")) : null;
+        // Parse change value (preserve sign - don't remove + sign)
+        let change = null;
+        let changePercent = null;
+        
+        if (changeText) {
+          // Parse the absolute change value (handle +0.00 case)
+          const cleanChangeText = changeText.replace(/[+]/g, "");
+          change = parseFloat(cleanChangeText);
+          
+          // Calculate percentage change if we have both price and change
+          if (!isNaN(change) && price !== null && price > 0) {
+            changePercent = ((change / price) * 100).toFixed(2);
+          }
+        }
 
         // Determine stock type based on change value and CSS class
         let type = "neutral";
-        if (change !== null) {
+        if (!isNaN(change)) {
           if (change > 0 || changeClass.includes("hi")) {
             type = "gainer";
           } else if (change < 0 || changeClass.includes("lo")) {
@@ -283,6 +188,7 @@ export async function scrapeStocks() {
           volume,
           price,
           change,
+          changePercent,
           type,
           url,
           createdAt: new Date().toISOString()
@@ -290,12 +196,13 @@ export async function scrapeStocks() {
       }).filter(Boolean); // Remove null entries
     });
 
+    console.log(`✅ Successfully scraped ${data.length} stocks`);
     return data;
   } catch (error) {
     console.error("❌ Error in scrapeStocks:", error);
     throw error;
   } finally {
-    // Always close the page to prevent resource leaks
+    // Always close the page and browser to prevent resource leaks
     if (page) {
       try {
         await page.close();
@@ -303,41 +210,95 @@ export async function scrapeStocks() {
         console.error("❌ Error closing page in scrapeStocks:", error);
       }
     }
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (error) {
+        console.error("❌ Error closing browser in scrapeStocks:", error);
+      }
+    }
   }
 }
 
 /**
  * Scrape top gainers and bottom losers from NSE
- * Uses global browser instance to prevent Windows EBUSY errors
+ * Creates a new browser instance for each scraping operation
  * @returns {Promise<Object>} Object containing topGainers and bottomLosers arrays
  */
 export async function scrapeTopGainersAndLosers() {
+  let browser = null;
   let page = null;
   try {
-    const browser = await initializeBrowser();
+    browser = await createBrowser();
     page = await browser.newPage();
     
     await page.goto("https://afx.kwayisi.org/nse/", { waitUntil: "networkidle2" });
 
     const data = await page.evaluate(() => {
-      // Grab all stock tables inside the wrapper <div data-stat="">
-      const tables = document.querySelectorAll("div[data-stat] table");
+      // Target the specific div with data-stat="" and margin-top:.25em style
+      const statDiv = document.querySelector('div[data-stat=""][style*="margin-top:.25em"]');
+      
+      if (!statDiv) {
+        console.warn("Could not find the specific stat div with margin-top:.25em");
+        return { topGainers: [], bottomLosers: [] };
+      }
 
-      function parseTable(table) {
-        return Array.from(table.querySelectorAll("tbody tr")).map((row, index) => {
+      // Get the two tables within this div
+      const tables = statDiv.querySelectorAll("table");
+      
+      if (tables.length < 2) {
+        console.warn("Expected 2 tables (gainers and losers) but found:", tables.length);
+        return { topGainers: [], bottomLosers: [] };
+      }
+
+      function parseTable(table, tableType) {
+        const rows = table.querySelectorAll("tbody tr");
+        return Array.from(rows).map((row, index) => {
           const cols = row.querySelectorAll("td");
+          
+          // Extract ticker from the link
+          const tickerLink = cols[0]?.querySelector("a");
+          const ticker = tickerLink?.innerText.trim() || cols[0]?.innerText.trim();
+          const tickerUrl = tickerLink?.href;
+          
+          // Extract price (second column)
+          const priceText = cols[1]?.innerText.trim();
+          const price = priceText ? parseFloat(priceText.replace(/,/g, '')) : null;
+          
+          // Extract change percentage (third column)
+          const changeText = cols[2]?.innerText.trim();
+          const changePercent = changeText ? parseFloat(changeText.replace(/[+%]/g, '')) : null;
+          
+          // Determine if it's a gain or loss based on the CSS class
+          const changeClass = cols[2]?.className || "";
+          const isGain = changeClass.includes("hi") || changeText?.startsWith("+");
+          const isLoss = changeClass.includes("lo") || changeText?.startsWith("-");
+          
           return {
-            ticker: cols[0]?.innerText.trim(),
-            price: cols[1]?.innerText.trim(),
-            change: cols[2]?.innerText.trim(),
-            rank: index + 1
+            ticker: ticker,
+            price: price,
+            changePercent: changePercent,
+            changeText: changeText,
+            isGain: isGain,
+            isLoss: isLoss,
+            tickerUrl: tickerUrl,
+            rank: index + 1,
+            tableType: tableType
           };
         });
       }
 
+      // Parse the first table (Top Gainers)
+      const topGainers = parseTable(tables[0], "gainers");
+      
+      // Parse the second table (Bottom Losers) 
+      const bottomLosers = parseTable(tables[1], "losers");
+
+      console.log(`Scraped ${topGainers.length} gainers and ${bottomLosers.length} losers`);
+      
       return {
-        topGainers: parseTable(tables[0]), // first table = Top Gainers
-        bottomLosers: parseTable(tables[1]) // second table = Bottom Losers
+        topGainers: topGainers,
+        bottomLosers: bottomLosers
       };
     });
 
@@ -346,7 +307,7 @@ export async function scrapeTopGainersAndLosers() {
     console.error("❌ Error in scrapeTopGainersAndLosers:", error);
     throw error;
   } finally {
-    // Always close the page to prevent resource leaks
+    // Always close the page and browser to prevent resource leaks
     if (page) {
       try {
         await page.close();
@@ -354,18 +315,26 @@ export async function scrapeTopGainersAndLosers() {
         console.error("❌ Error closing page in scrapeTopGainersAndLosers:", error);
       }
     }
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (error) {
+        console.error("❌ Error closing browser in scrapeTopGainersAndLosers:", error);
+      }
+    }
   }
 }
 
 /**
  * Scrape market insights from NSE
- * Uses global browser instance to prevent Windows EBUSY errors
+ * Creates a new browser instance for each scraping operation
  * @returns {Promise<Object>} Object containing market insights data
  */
 export async function scrapeMarketInsights() {
+  let browser = null;
   let page = null;
   try {
-    const browser = await initializeBrowser();
+    browser = await createBrowser();
     page = await browser.newPage();
     
     await page.goto("https://afx.kwayisi.org/nse/", { waitUntil: "networkidle2" });
@@ -377,10 +346,37 @@ export async function scrapeMarketInsights() {
       if (marketTable) {
         const row = marketTable.querySelector("tbody tr");
         const cols = row.querySelectorAll("td");
+        
+        // Parse NASI Index (e.g., "173.50 (-1.52)")
+        const nasiIndexText = cols[0]?.innerText.trim() || "";
+        const nasiMatch = nasiIndexText.match(/([\d.]+)\s*\(([+-]?[\d.]+)\)/);
+        
+        // Parse Year to Date (e.g., "+50.02 (40.51%)")
+        const yearToDateText = cols[1]?.innerText.trim() || "";
+        const ytdMatch = yearToDateText.match(/([+-]?[\d.]+)\s*\(([+-]?[\d.]+)%\)/);
+        
         marketInsights = {
-          nasiIndex: cols[0]?.innerText.trim(),    // "173.50 (-1.52)"
-          yearToDate: cols[1]?.innerText.trim(),   // "+50.02 (40.51%)"
-          marketCap: cols[2]?.innerText.trim(),    // "KES 2.73Tr"
+          indexName: "NASI",
+          currentValue: nasiMatch ? parseFloat(nasiMatch[1]) : 0,
+          change: nasiMatch ? parseFloat(nasiMatch[2]) : 0,
+          changePercent: ytdMatch ? parseFloat(ytdMatch[2]) : 0,
+          timestamp: new Date().toISOString(),
+          // Keep original data for backward compatibility
+          nasiIndex: nasiIndexText,
+          yearToDate: yearToDateText,
+          marketCap: cols[2]?.innerText.trim() || ""
+        };
+      } else {
+        // Return default values if table not found
+        marketInsights = {
+          indexName: "NASI",
+          currentValue: 0,
+          change: 0,
+          changePercent: 0,
+          timestamp: new Date().toISOString(),
+          nasiIndex: "N/A",
+          yearToDate: "N/A",
+          marketCap: "N/A"
         };
       }
 
@@ -392,12 +388,19 @@ export async function scrapeMarketInsights() {
     console.error("❌ Error in scrapeMarketInsights:", error);
     throw error;
   } finally {
-    // Always close the page to prevent resource leaks
+    // Always close the page and browser to prevent resource leaks
     if (page) {
       try {
         await page.close();
       } catch (error) {
         console.error("❌ Error closing page in scrapeMarketInsights:", error);
+      }
+    }
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (error) {
+        console.error("❌ Error closing browser in scrapeMarketInsights:", error);
       }
     }
   }
@@ -410,12 +413,19 @@ export async function scrapeMarketInsights() {
  * @returns {Promise<Object>} Object containing detailed stock information
  */
 export async function scrapeStock(ticker) {
+  let browser = null;
   let page = null;
   try {
-    const browser = await initializeBrowser();
+    browser = await createBrowser();
     page = await browser.newPage();
     
-    await page.goto(`https://afx.kwayisi.org/nse/${ticker.toLowerCase()}.html`, { waitUntil: "networkidle2" });
+    await page.goto(`https://afx.kwayisi.org/nse/${ticker.toLowerCase()}.html`, { 
+      waitUntil: "domcontentloaded",
+      timeout: 30000 
+    });
+
+    // Wait a bit for dynamic content to load
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
     const data = await page.evaluate(() => {
       const getText = (selector) =>
@@ -425,14 +435,121 @@ export async function scrapeStock(ticker) {
       const name = getText("h1") || getText("h2");
       const description = document.querySelector("p")?.innerText || "";
 
-      // --- Current Share Price ---
-      const priceBlock = document.querySelector("h3, h4, .price")?.innerText || "";
+      // --- Current Share Price and Change Data ---
+      let currentPrice = "";
+      let changeAmount = "";
+      let changePercent = "";
+      let marketCap = "";
+      
+      // Look for the price display in the h2 div with abbr and span structure
+      const priceDiv = document.querySelector(".h2");
+      if (priceDiv) {
+        const priceSpan = priceDiv.querySelector("span");
+        if (priceSpan) {
+          const priceText = priceSpan.innerText.trim();
+          // Extract price (e.g., "4.10 ▾ 0.22 (5.09%)")
+          const priceMatch = priceText.match(/(\d+\.?\d*)\s*[▾▴]\s*(\d+\.?\d*)\s*\(([+-]?\d+\.?\d*%)\)/);
+          if (priceMatch) {
+            currentPrice = priceMatch[1];
+            changeAmount = priceMatch[2];
+            changePercent = priceMatch[3];
+          }
+        }
+      }
 
-      // --- Last Trading Results ---
+      // --- Market Capitalization ---
+      const paragraphs = document.querySelectorAll("p");
+      for (const p of paragraphs) {
+        const text = p.innerText;
+        const marketCapMatch = text.match(/market capitalization of KES ([\d.]+ billion)/i);
+        if (marketCapMatch) {
+          marketCap = marketCapMatch[1] + "B";
+          break;
+        }
+      }
+
+      // --- Live Trading Feed & Growth & Valuation ---
+      let liveTradingFeed = {};
+      let growthValuation = {};
+      
+      // Find tables by their header text (more robust approach)
+      const allTables = document.querySelectorAll('table');
+      console.log('Found', allTables.length, 'tables on the page');
+      
+      allTables.forEach((table, index) => {
+        const header = table.querySelector('thead th');
+        if (header) {
+          const headerText = header.innerText.trim();
+          console.log('Table', index, 'header:', headerText);
+          
+          if (headerText.includes('Live Trading Feed')) {
+            // Extract Live Trading Feed data
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+              const cells = row.querySelectorAll('td');
+              if (cells.length >= 2) {
+                const label = cells[0].innerText.trim();
+                const value = cells[1].innerText.trim();
+                liveTradingFeed[label] = value;
+              }
+            });
+          } else if (headerText.includes('Growth & Valuation')) {
+            // Extract Growth & Valuation data
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+              const cells = row.querySelectorAll('td');
+              if (cells.length >= 2) {
+                const label = cells[0].innerText.trim();
+                const value = cells[1].innerText.trim();
+                growthValuation[label] = value;
+              }
+            });
+          }
+        }
+      });
+      
+      // Also try the specific CSS selector as a fallback
+      if (Object.keys(liveTradingFeed).length === 0 || Object.keys(growthValuation).length === 0) {
+        const targetDiv = document.querySelector('body > div:nth-child(4) > div > div > main > article > div:nth-child(7)');
+        if (targetDiv) {
+          const tables = targetDiv.querySelectorAll('table');
+          
+          tables.forEach((table) => {
+            const header = table.querySelector('thead th');
+            if (header) {
+              const headerText = header.innerText.trim();
+              
+              if (headerText.includes('Live Trading Feed') && Object.keys(liveTradingFeed).length === 0) {
+                const rows = table.querySelectorAll('tbody tr');
+                rows.forEach(row => {
+                  const cells = row.querySelectorAll('td');
+                  if (cells.length >= 2) {
+                    const label = cells[0].innerText.trim();
+                    const value = cells[1].innerText.trim();
+                    liveTradingFeed[label] = value;
+                  }
+                });
+              } else if (headerText.includes('Growth & Valuation') && Object.keys(growthValuation).length === 0) {
+                const rows = table.querySelectorAll('tbody tr');
+                rows.forEach(row => {
+                  const cells = row.querySelectorAll('td');
+                  if (cells.length >= 2) {
+                    const label = cells[0].innerText.trim();
+                    const value = cells[1].innerText.trim();
+                    growthValuation[label] = value;
+                  }
+                });
+              }
+            }
+          });
+        }
+      }
+
+      // --- Legacy Last Trading Results (fallback) ---
       let lastTrading = {};
       const tradingTable = Array.from(document.querySelectorAll("table"))
         .find((t) => t.innerText.includes("Opening Price"));
-      if (tradingTable) {
+      if (tradingTable && Object.keys(liveTradingFeed).length === 0) {
         lastTrading = Object.fromEntries(
           Array.from(tradingTable.querySelectorAll("tr")).map((tr) => {
             const [label, value] = tr.innerText.split(/\t| {2,}/);
@@ -443,13 +560,17 @@ export async function scrapeStock(ticker) {
 
       // --- Performance Table (1WK, 4WK, 3MO, etc.) ---
       let performance = {};
-      const perfTable = Array.from(document.querySelectorAll("table"))
-        .find((t) => t.innerText.includes("1WK"));
-      if (perfTable) {
-        const headers = Array.from(perfTable.querySelectorAll("thead th")).map((th) => th.innerText.trim());
-        const values = Array.from(perfTable.querySelectorAll("tbody td")).map((td) => td.innerText.trim());
-        headers.forEach((h, i) => {
-          performance[h] = values[i];
+      const perfDiv = document.querySelector('[data-perf]');
+      if (perfDiv) {
+        const tables = perfDiv.querySelectorAll('table');
+        tables.forEach(table => {
+          const headers = Array.from(table.querySelectorAll("thead th")).map((th) => th.innerText.trim());
+          const values = Array.from(table.querySelectorAll("tbody td")).map((td) => td.innerText.trim());
+          headers.forEach((h, i) => {
+            if (values[i]) {
+              performance[h] = values[i];
+            }
+          });
         });
       }
 
@@ -470,11 +591,39 @@ export async function scrapeStock(ticker) {
         });
       }
 
-      // --- Company Profile ---
+      // --- Company Profile & Factsheet ---
       let profile = {};
+      let factsheet = {};
+      
+      // Try to get factsheet data from the specific div with data-fact attribute
+      const factsheetDiv = document.querySelector('[data-fact]');
+      if (factsheetDiv) {
+        const dl = factsheetDiv.querySelector('dl');
+        if (dl) {
+          const divs = dl.querySelectorAll('div');
+          divs.forEach(div => {
+            const dt = div.querySelector('dt');
+            const dd = div.querySelector('dd');
+            if (dt && dd) {
+              const label = dt.innerText.trim();
+              let value = dd.innerText.trim();
+              
+              // Handle website links
+              const link = dd.querySelector('a');
+              if (link) {
+                value = link.getAttribute('href') || link.innerText.trim();
+              }
+              
+              factsheet[label] = value;
+            }
+          });
+        }
+      }
+      
+      // Fallback to profile table if factsheet not found
       const profileTable = Array.from(document.querySelectorAll("table"))
         .find((t) => t.innerText.includes("Sector") && t.innerText.includes("Address"));
-      if (profileTable) {
+      if (profileTable && Object.keys(factsheet).length === 0) {
         profile = Object.fromEntries(
           Array.from(profileTable.querySelectorAll("tr")).map((tr) => {
             const [label, value] = tr.innerText.split(/\t| {2,}/);
@@ -486,11 +635,17 @@ export async function scrapeStock(ticker) {
       return {
         name,
         description,
-        currentPrice: priceBlock,
+        currentPrice,
+        changeAmount,
+        changePercent,
+        marketCap,
         lastTrading,
+        liveTradingFeed,
+        growthValuation,
         performance,
         history,
         profile,
+        factsheet,
       };
     });
 
@@ -499,12 +654,19 @@ export async function scrapeStock(ticker) {
     console.error("❌ Error in scrapeStock:", error);
     throw error;
   } finally {
-    // Always close the page to prevent resource leaks
+    // Always close the page and browser to prevent resource leaks
     if (page) {
       try {
         await page.close();
       } catch (error) {
         console.error("❌ Error closing page in scrapeStock:", error);
+      }
+    }
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (error) {
+        console.error("❌ Error closing browser in scrapeStock:", error);
       }
     }
   }
@@ -516,9 +678,21 @@ export async function scrapeStock(ticker) {
  */
 export async function fetchNSEListings() {
   console.log('Using legacy fetchNSEListings - consider using scrapeStocks() instead');
+  
+  // Get stocks data
   const stocks = await scrapeStocks();
+  
+  // Get top gainers and losers data
+  const { topGainers, bottomLosers } = await scrapeTopGainersAndLosers();
+  
+  // Get market insights
+  const marketInsights = await scrapeMarketInsights();
+  
   return {
     stocks: stocks,
+    topGainers: topGainers,
+    topLosers: bottomLosers, // Note: using bottomLosers as topLosers for consistency
+    marketIndex: marketInsights,
     timestamp: new Date().toISOString()
   };
 }

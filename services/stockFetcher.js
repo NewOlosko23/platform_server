@@ -14,7 +14,9 @@ async function getLatestStockPrice(symbol) {
     if (latestOHLCV) {
       return {
         symbol: latestOHLCV.symbol,
-        price: latestOHLCV.valueKES,
+        price: Math.round(latestOHLCV.valueKES * 100) / 100,
+        volume: latestOHLCV.volume || null,
+        change: latestOHLCV.metadata?.change || null,
         timestamp: latestOHLCV.timestamp,
         source: latestOHLCV.source,
         lastUpdated: latestOHLCV.lastUpdated,
@@ -31,7 +33,9 @@ async function getLatestStockPrice(symbol) {
     
     return {
       symbol: stock.ticker,
-      price: stock.price,
+      price: Math.round(stock.price * 100) / 100,
+      volume: stock.volume || null,
+      change: stock.change,
       timestamp: stock.createdAt.getTime(),
       source: "nse",
       lastUpdated: stock.createdAt,
@@ -174,9 +178,103 @@ async function searchStocks(query, limit = 10) {
   }
 }
 
+/**
+ * Process and store stock data in OHLCV collection
+ * This ensures stock data is available in the unified OHLCV collection
+ */
+async function processAndStoreStockData() {
+  try {
+    console.log("🚀 Starting stock data processing and storage...");
+    
+    // Get all stock data from Stock collection
+    const stocks = await Stock.find({}).sort({ createdAt: -1 });
+    
+    if (stocks.length === 0) {
+      console.log("⚠️ No stock data found in Stock collection");
+      return;
+    }
+    
+    // Group stocks by ticker to get the latest record for each
+    const stockMap = new Map();
+    stocks.forEach(stock => {
+      if (!stockMap.has(stock.ticker) || stock.createdAt > stockMap.get(stock.ticker).createdAt) {
+        stockMap.set(stock.ticker, stock);
+      }
+    });
+    
+    console.log(`📈 Processing ${stockMap.size} unique stock symbols...`);
+    
+    let processedCount = 0;
+    const currentTime = Date.now();
+    
+    // Process each unique stock
+    for (const [ticker, stock] of stockMap) {
+      try {
+        // Parse price from string to number and round to 2 decimal places
+        let price = 0;
+        if (typeof stock.price === 'string') {
+          price = Math.round((parseFloat(stock.price.replace(/[₹,]/g, '')) || 0) * 100) / 100;
+        } else if (typeof stock.price === 'number') {
+          price = Math.round(stock.price * 100) / 100;
+        }
+        
+        if (price <= 0) {
+          console.log(`⚠️ Skipping ${ticker} - invalid price: ${stock.price}`);
+          continue;
+        }
+        
+        // Create OHLCV document
+        const ohlcvData = {
+          type: "stock",
+          symbol: ticker.toUpperCase(),
+          timestamp: currentTime,
+          open: price,
+          high: price,
+          low: price,
+          close: price,
+          volume: stock.volume || 0,
+          valueKES: price,
+          source: "nse",
+          lastUpdated: new Date(),
+          metadata: {
+            companyName: stock.name,
+            exchange: "NSE",
+            volume: stock.volume || null,
+            change: stock.change || null,
+            stockType: stock.type,
+            url: stock.url
+          }
+        };
+        
+        // Store in OHLCV collection (upsert to avoid duplicates)
+        await OHLCV.findOneAndUpdate(
+          { 
+            type: "stock", 
+            symbol: ticker.toUpperCase()
+          },
+          ohlcvData,
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        
+        processedCount++;
+        
+      } catch (error) {
+        console.error(`❌ Error processing stock ${ticker}:`, error.message);
+      }
+    }
+    
+    console.log(`✅ Stock data processing completed: ${processedCount} stocks processed`);
+    
+  } catch (error) {
+    console.error("❌ Error in processAndStoreStockData:", error);
+    throw error;
+  }
+}
+
 export {
   getLatestStockPrice,
   getHistoricalStockData,
   getAvailableStockSymbols,
-  searchStocks
+  searchStocks,
+  processAndStoreStockData
 };

@@ -11,6 +11,12 @@ const SystemSettingsSchema = new mongoose.Schema({
   minTradeAmount: { type: Number, default: 100 },
   maxTradeAmount: { type: Number, default: 1000000 },
   
+  // Fee Configuration
+  platformFeePercentage: { type: Number, default: 0.5, min: 0, max: 10 }, // 0.5% default, max 10%
+  taxPercentage: { type: Number, default: 0.1, min: 0, max: 5 }, // 0.1% default, max 5%
+  minimumFee: { type: Number, default: 10, min: 0 }, // KSh 10 minimum
+  maximumFee: { type: Number, default: 1000, min: 0 }, // KSh 1000 maximum
+  
   // Data Scraping Configuration
   scrapingEnabled: { type: Boolean, default: true },
   scrapingInterval: { type: Number, default: 300 }, // 5 minutes in seconds

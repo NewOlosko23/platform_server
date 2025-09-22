@@ -39,6 +39,14 @@ router.get("/:ticker", async (req, res) => {
     // Scrape fresh data
     console.log(`Scraping fresh data for ticker: ${ticker}`);
     const stockData = await scrapeStock(ticker);
+    console.log(`✅ Successfully scraped data for ${ticker}:`, {
+      name: stockData?.name,
+      hasDescription: !!stockData?.description,
+      hasLastTrading: !!stockData?.lastTrading,
+      hasPerformance: !!stockData?.performance,
+      hasHistory: !!stockData?.history,
+      hasProfile: !!stockData?.profile
+    });
     
     if (!stockData || !stockData.name) {
       return res.status(404).json({
@@ -138,6 +146,14 @@ router.post("/:ticker/refresh", async (req, res) => {
 
     console.log(`Force refreshing data for ticker: ${ticker}`);
     const stockData = await scrapeStock(ticker);
+    console.log(`✅ Successfully refreshed data for ${ticker}:`, {
+      name: stockData?.name,
+      hasDescription: !!stockData?.description,
+      hasLastTrading: !!stockData?.lastTrading,
+      hasPerformance: !!stockData?.performance,
+      hasHistory: !!stockData?.history,
+      hasProfile: !!stockData?.profile
+    });
     
     if (!stockData || !stockData.name) {
       return res.status(404).json({

@@ -26,17 +26,18 @@ The platform implements a comprehensive fee and tax system that generates revenu
 
 ## Configuration
 
-### Environment Variables
+### Admin Dashboard Configuration
 
-Add these to your `.env` file:
+Fee settings are now configurable through the admin dashboard at `/dashboard/admin/settings`. The admin can set:
 
-```env
-# Platform Fees and Taxes Configuration
-PLATFORM_FEE_PERCENTAGE=0.5
-TAX_PERCENTAGE=0.1
-MINIMUM_FEE=10
-MAXIMUM_FEE=1000
-```
+- **Platform Fee Percentage**: 0-10% (default: 0.5%)
+- **Tax Percentage**: 0-5% (default: 0.1%)
+- **Minimum Fee**: KSh amount (default: 10)
+- **Maximum Fee**: KSh amount (default: 1000)
+
+### Database Storage
+
+Fee configuration is stored in the `SystemSettings` collection and automatically applied to all trades. Changes take effect immediately without requiring server restart.
 
 ### Fee Calculation Logic
 
@@ -81,7 +82,18 @@ The `Trade` model now includes fee tracking fields:
 
 ## API Endpoints
 
-### New Endpoint: Get Trade Fees
+### Admin Fee Settings Management
+
+**GET** `/api/admin/fee-settings`
+- Get current fee configuration
+- Requires admin authentication
+
+**PUT** `/api/admin/fee-settings`
+- Update fee configuration
+- Requires admin authentication
+- Body: `{ platformFeePercentage, taxPercentage, minimumFee, maximumFee }`
+
+### Get Trade Fees
 
 **GET** `/api/trades/fees`
 

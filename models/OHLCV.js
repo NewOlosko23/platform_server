@@ -65,6 +65,10 @@ const OHLCVSchema = new mongoose.Schema({
     // For stocks
     companyName: String,
     exchange: String,
+    volume: Number,
+    change: Number,
+    stockType: String,
+    url: String,
     
     // For crypto
     baseAsset: String,

@@ -7,13 +7,17 @@ import {
   updateUser,
   banUser,
   getPlatformStats,
-  getSystemHealth
+  getSystemHealth,
+  processStockData,
+  getDataPipelineStatus
 } from "../controllers/adminController.js";
 import { 
   getSystemSettings,
   updateSystemSettings,
   getActivityLogs,
-  getUserActivitySummary
+  getUserActivitySummary,
+  getFeeSettings,
+  updateFeeSettings
 } from "../controllers/adminControllerAdditional.js";
 import { authenticate, authorizeRoles } from "../middleware/authMiddleware.js";
 import OHLCV from "../models/OHLCV.js";
@@ -23,10 +27,18 @@ const router = express.Router();
 // Platform Statistics
 router.get("/stats", authenticate, authorizeRoles("admin"), getPlatformStats);
 router.get("/system-health", authenticate, authorizeRoles("admin"), getSystemHealth);
+router.get("/data-pipeline", authenticate, authorizeRoles("admin"), getDataPipelineStatus);
+
+// Data Management
+router.post("/process-stocks", authenticate, authorizeRoles("admin"), processStockData);
 
 // System Settings
 router.get("/settings", authenticate, authorizeRoles("admin"), getSystemSettings);
 router.put("/settings", authenticate, authorizeRoles("admin"), updateSystemSettings);
+
+// Fee Settings
+router.get("/fee-settings", authenticate, authorizeRoles("admin"), getFeeSettings);
+router.put("/fee-settings", authenticate, authorizeRoles("admin"), updateFeeSettings);
 
 // Activity Monitoring
 router.get("/activity", authenticate, authorizeRoles("admin"), getActivityLogs);

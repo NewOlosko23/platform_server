@@ -316,6 +316,7 @@ export const getSystemHealth = async (req, res) => {
       totalMarketInsightsRecords,
       // Assets health data
       latestOHLCVUpdate,
+      latestStockOHLCVUpdate,
       totalOHLCVRecords,
       assetTypeCounts
     ] = await Promise.all([
@@ -326,6 +327,7 @@ export const getSystemHealth = async (req, res) => {
       MarketInsights.countDocuments(),
       // Assets data
       OHLCV.findOne().sort({ timestamp: -1 }),
+      OHLCV.findOne({ type: "stock" }).sort({ timestamp: -1 }),
       OHLCV.countDocuments(),
       OHLCV.aggregate([
         { $group: { _id: "$type", count: { $sum: 1 }, uniqueSymbols: { $addToSet: "$symbol" } } },
@@ -350,9 +352,11 @@ export const getSystemHealth = async (req, res) => {
       data: {
         dataFreshness: {
           stocks: {
-            lastUpdate: latestStockUpdate?.scrapedAt,
-            isRecent: latestStockUpdate?.scrapedAt > fiveMinutesAgo,
-            totalRecords: totalStockRecords
+            lastUpdate: latestStockOHLCVUpdate?.timestamp || latestStockUpdate?.scrapedAt,
+            isRecent: (latestStockOHLCVUpdate?.timestamp || latestStockUpdate?.scrapedAt) > fiveMinutesAgo,
+            totalRecords: totalStockRecords,
+            ohlcvRecords: latestStockOHLCVUpdate ? 1 : 0,
+            note: "Stock data is scraped every 5 minutes and processed into OHLCV collection for trading"
           },
           marketInsights: {
             lastUpdate: latestMarketInsights?.scrapedAt,
@@ -375,6 +379,89 @@ export const getSystemHealth = async (req, res) => {
           scraping: 'active',
           timestamp: now
         }
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false,
+      error: err.message 
+    });
+  }
+};
+
+// Manual trigger to process stock data into OHLCV collection
+export const processStockData = async (req, res) => {
+  try {
+    const { processAndStoreStockData } = await import("../services/stockFetcher.js");
+    
+    console.log("🔄 Manual stock data processing triggered by admin");
+    await processAndStoreStockData();
+    
+    res.json({
+      success: true,
+      message: "Stock data processing completed successfully"
+    });
+  } catch (err) {
+    console.error("❌ Error in manual stock data processing:", err);
+    res.status(500).json({ 
+      success: false,
+      error: err.message,
+      message: "Failed to process stock data"
+    });
+  }
+};
+
+// Diagnostic endpoint to check data pipeline status
+export const getDataPipelineStatus = async (req, res) => {
+  try {
+    const [
+      stockCount,
+      ohlcvStockCount,
+      latestStock,
+      latestOHLCVStock,
+      cryptoCount,
+      fxCount
+    ] = await Promise.all([
+      Stock.countDocuments(),
+      OHLCV.countDocuments({ type: "stock" }),
+      Stock.findOne().sort({ createdAt: -1 }),
+      OHLCV.findOne({ type: "stock" }).sort({ timestamp: -1 }),
+      OHLCV.countDocuments({ type: "crypto" }),
+      OHLCV.countDocuments({ type: "currency" })
+    ]);
+
+    const now = new Date();
+    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+
+    res.json({
+      success: true,
+      data: {
+        pipeline: {
+          stockCollection: {
+            totalRecords: stockCount,
+            latestUpdate: latestStock?.createdAt,
+            isRecent: latestStock?.createdAt > fiveMinutesAgo
+          },
+          ohlcvStockCollection: {
+            totalRecords: ohlcvStockCount,
+            latestUpdate: latestOHLCVStock?.timestamp,
+            isRecent: latestOHLCVStock?.timestamp > fiveMinutesAgo
+          },
+          otherAssets: {
+            crypto: cryptoCount,
+            fx: fxCount
+          }
+        },
+        status: {
+          stockScraping: latestStock?.createdAt > fiveMinutesAgo ? "Active" : "Stale",
+          stockProcessing: latestOHLCVStock?.timestamp > fiveMinutesAgo ? "Active" : "Stale",
+          dataFlow: ohlcvStockCount > 0 ? "Working" : "Broken"
+        },
+        recommendations: [
+          ohlcvStockCount === 0 ? "Run stock data processing to populate OHLCV collection" : null,
+          latestStock?.createdAt <= fiveMinutesAgo ? "Check stock scraping scheduler" : null,
+          latestOHLCVStock?.timestamp <= fiveMinutesAgo ? "Check stock processing pipeline" : null
+        ].filter(Boolean)
       }
     });
   } catch (err) {
