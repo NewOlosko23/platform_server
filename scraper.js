@@ -67,27 +67,28 @@ async function createBrowser() {
       ignoreHTTPSErrors: true
     };
 
-    // Detect Render environment (Linux) and use Puppeteer's cache path
-    if (process.env.RENDER) {
-      const chromePath = '/opt/render/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome';
+// Detect Render environment by checking NODE_ENV
+if (process.env.NODE_ENV === "production") {
+  // Render build path from puppeteer postinstall
+  const chromePath = "/opt/render/.cache/puppeteer/chrome/linux-131.0.6778.204/chrome-linux64/chrome";
+  launchOptions.executablePath = chromePath;
+  console.log(`🔍 Using Render Chrome at: ${chromePath}`);
+} else {
+  // Local dev fallback (Windows paths)
+  const possiblePaths = [
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+    `C:\\Users\\${process.env.USERNAME || "user"}\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe`,
+  ];
+  for (const chromePath of possiblePaths) {
+    if (fs.existsSync(chromePath)) {
       launchOptions.executablePath = chromePath;
-      console.log(`🔍 Using Render Chrome at: ${chromePath}`);
-    } else {
-      // Try to find Chrome executable locally (Windows paths)
-      const possiblePaths = [
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Users\\' + (process.env.USERNAME || 'user') + '\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'
-      ];
-
-      for (const chromePath of possiblePaths) {
-        if (fs.existsSync(chromePath)) {
-          launchOptions.executablePath = chromePath;
-          console.log(`🔍 Found Chrome at: ${chromePath}`);
-          break;
-        }
-      }
+      console.log(`🔍 Found Chrome at: ${chromePath}`);
+      break;
     }
+  }
+}
+
 
     console.log("🚀 Launching Puppeteer browser...");
     const browser = await puppeteer.launch(launchOptions);
