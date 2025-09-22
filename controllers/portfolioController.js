@@ -235,35 +235,13 @@ export const getPortfolioSummary = async (req, res) => {
     res.json({
       success: true,
       data: {
-        user: {
-          balance: user.balance,
-          totalValue: totalValue
-        },
-        portfolio: {
-          totalPortfolioValue: safeTotalPortfolioValue,
-          totalCostBasis: safeTotalCostBasis,
-          totalGainLoss: totalGainLoss,
-          totalGainLossPercent: totalGainLossPercent,
-          totalReturnPercent: totalReturnPercent,
-          totalHoldings: holdings.length
-        },
-        performance: {
-          dailyChange: totalDayChange,
-          dailyChangePercent: dailyChangePercent,
-          totalReturn: totalValue - startingBalance,
-          totalReturnPercent: totalReturnPercent
-        },
-        allocation: {
-          cash: {
-            amount: user.balance,
-            percentage: cashAllocation
-          },
-          stocks: {
-            amount: safeTotalPortfolioValue,
-            percentage: stockAllocation
-          }
-        },
-        lastUpdated: new Date()
+        totalValue: totalValue,
+        totalGain: totalGainLoss,
+        totalGainPercent: totalGainLossPercent,
+        assetCount: holdings.length,
+        availableBalance: user.balance, // Cash available to invest
+        investedAmount: safeTotalPortfolioValue, // Amount invested in assets
+        lastUpdated: new Date().toISOString()
       }
     });
   } catch (err) {
@@ -272,6 +250,107 @@ export const getPortfolioSummary = async (req, res) => {
       success: false,
       error: err.message,
       message: "Failed to fetch portfolio summary"
+    });
+  }
+};
+
+export const getPortfolioHistory = async (req, res) => {
+  try {
+    const { days = 7 } = req.query;
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "User not found" 
+      });
+    }
+
+    // Get portfolio history from trades
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - parseInt(days));
+
+    const trades = await Trade.find({ 
+      userId: user._id,
+      timestamp: { $gte: startDate, $lte: endDate }
+    }).sort({ timestamp: 1 });
+
+    // Calculate portfolio value over time
+    const history = [];
+    let runningBalance = user.balance;
+    let runningPortfolioValue = 0;
+
+    // Group trades by day
+    const tradesByDay = {};
+    trades.forEach(trade => {
+      const day = trade.timestamp.toISOString().split('T')[0];
+      if (!tradesByDay[day]) {
+        tradesByDay[day] = [];
+      }
+      tradesByDay[day].push(trade);
+    });
+
+    // Calculate daily portfolio values
+    for (let i = 0; i < parseInt(days); i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - (parseInt(days) - 1 - i));
+      const dayStr = date.toISOString().split('T')[0];
+      
+      // Apply trades for this day
+      if (tradesByDay[dayStr]) {
+        tradesByDay[dayStr].forEach(trade => {
+          if (trade.type === 'buy') {
+            runningBalance -= (trade.price * trade.quantity + trade.fees);
+          } else {
+            runningBalance += (trade.price * trade.quantity - trade.fees);
+          }
+        });
+      }
+
+      // Calculate current portfolio value
+      const holdings = await Portfolio.find({ userId: user._id });
+      let currentPortfolioValue = 0;
+      
+      for (const holding of holdings) {
+        try {
+          let assetData;
+          switch (holding.assetType) {
+            case 'stock':
+              assetData = await fetchStockPrice(holding.assetSymbol);
+              break;
+            case 'crypto':
+              assetData = await getLatestCryptoPrice(holding.assetSymbol);
+              break;
+            case 'currency':
+              assetData = await getLatestFXRate(holding.assetSymbol);
+              break;
+          }
+          currentPortfolioValue += assetData.price * holding.quantity;
+        } catch (err) {
+          // Use average buy price as fallback
+          currentPortfolioValue += holding.avgBuyPrice * holding.quantity;
+        }
+      }
+
+      history.push({
+        date: dayStr,
+        totalValue: runningBalance + currentPortfolioValue,
+        portfolioValue: currentPortfolioValue,
+        cashBalance: runningBalance
+      });
+    }
+
+    res.json({
+      success: true,
+      data: history
+    });
+  } catch (err) {
+    console.error('Portfolio history error:', err);
+    res.status(500).json({ 
+      success: false,
+      error: err.message,
+      message: "Failed to fetch portfolio history"
     });
   }
 };

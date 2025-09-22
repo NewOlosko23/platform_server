@@ -218,6 +218,46 @@ router.get("/market-index", async (req, res) => {
 });
 
 /**
+ * GET /api/stocks/market-index/history
+ * Get market index historical data
+ */
+router.get("/market-index/history", async (req, res) => {
+  try {
+    const { limit = 7 } = req.query;
+    
+    const marketIndexHistory = await MarketIndex.find()
+      .sort({ scrapedAt: -1 })
+      .limit(parseInt(limit));
+    
+    if (!marketIndexHistory || marketIndexHistory.length === 0) {
+      return res.status(404).json({ 
+        error: "Market index history not found"
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        historical: marketIndexHistory.map(item => ({
+          timestamp: item.scrapedAt,
+          value: item.value || 0,
+          change: item.change || 0,
+          changePercent: item.changePercent || 0
+        })),
+        count: marketIndexHistory.length
+      }
+    });
+    
+  } catch (error) {
+    console.error("Error fetching market index history:", error);
+    res.status(500).json({ 
+      error: error.message,
+      message: "Failed to fetch market index history"
+    });
+  }
+});
+
+/**
  * GET /api/stocks/top-gainers
  * Get the latest top gainers data
  */

@@ -1,6 +1,23 @@
 import mongoose from "mongoose";
 
 const marketInsightsSchema = new mongoose.Schema({
+  indexName: {
+    type: String,
+    default: "NASI",
+    required: true
+  },
+  currentValue: {
+    type: Number,
+    required: true
+  },
+  change: {
+    type: Number,
+    default: 0
+  },
+  changePercent: {
+    type: Number,
+    default: 0
+  },
   nasiIndex: {
     type: String,
     required: true
@@ -12,6 +29,10 @@ const marketInsightsSchema = new mongoose.Schema({
   marketCap: {
     type: String,
     required: true
+  },
+  timestamp: {
+    type: Date,
+    default: Date.now
   },
   scrapedAt: {
     type: Date,

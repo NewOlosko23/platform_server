@@ -41,7 +41,7 @@ const validateLiveData = (assetData, maxAgeMinutes = 5) => {
  */
 const fetchAssetPrice = async (assetType, symbol) => {
   try {
-    // Try to get real data from OHLCV collection first
+    // Get real data from OHLCV collection (same logic as assets API)
     const latest = await OHLCV.getLatestPrice(assetType, symbol);
     
     if (latest) {
@@ -64,55 +64,74 @@ const fetchAssetPrice = async (assetType, symbol) => {
         price: latest.valueKES,
         change: change,
         changePercent: changePercent,
-        volume: latest.volume || 0
+        volume: latest.volume || 0,
+        timestamp: latest.timestamp,
+        source: latest.source
       };
     }
     
-    // Fallback to specific asset type fetchers
-    switch (assetType) {
-      case 'stock':
-        const stockData = await fetchStockPrice(symbol);
-        return {
-          price: stockData.price,
-          change: stockData.change || 0,
-          changePercent: stockData.changePercent || 0,
-          volume: stockData.volume || 0
-        };
-      
-      case 'crypto':
-        const cryptoData = await getLatestCryptoPrice(symbol);
-        return {
-          price: cryptoData.price,
-          change: cryptoData.change24h || 0,
-          changePercent: cryptoData.changePercent24h || 0,
-          volume: cryptoData.volume24h || 0
-        };
-      
-      case 'currency':
-        const fxData = await getLatestFXRate(symbol);
-        return {
-          price: fxData.rate,
-          change: fxData.change24h || 0,
-          changePercent: fxData.changePercent24h || 0,
-          volume: 0 // FX doesn't have volume
-        };
-      
-      default:
-        throw new Error(`Unsupported asset type: ${assetType}`);
-    }
+    // If no data found in OHLCV, throw error to trigger fallback
+    throw new Error(`No data found for ${assetType}:${symbol}`);
+    
   } catch (error) {
     console.error(`Error fetching price for ${assetType}:${symbol}:`, error);
-    // Fallback to mock data only if no real data is available
-    const mockPrice = Math.abs(symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 500 + 5;
-    const variation = (Math.sin(symbol.length) * 0.1 + 1);
-    const price = Math.round(mockPrice * variation * 100) / 100;
     
-    return {
-      price: price,
-      change: 0,
-      changePercent: 0,
-      volume: 0
-    };
+    // Try fallback to specific asset type fetchers
+    try {
+      switch (assetType) {
+        case 'stock':
+          const stockData = await fetchStockPrice(symbol);
+          return {
+            price: stockData.price,
+            change: stockData.change || 0,
+            changePercent: stockData.changePercent || 0,
+            volume: stockData.volume || 0,
+            timestamp: new Date().getTime(),
+            source: 'fallback'
+          };
+        
+        case 'crypto':
+          const cryptoData = await getLatestCryptoPrice(symbol);
+          return {
+            price: cryptoData.price,
+            change: cryptoData.change24h || 0,
+            changePercent: cryptoData.changePercent24h || 0,
+            volume: cryptoData.volume24h || 0,
+            timestamp: new Date().getTime(),
+            source: 'fallback'
+          };
+        
+        case 'currency':
+          const fxData = await getLatestFXRate(symbol);
+          return {
+            price: fxData.rate,
+            change: fxData.change24h || 0,
+            changePercent: fxData.changePercent24h || 0,
+            volume: 0, // FX doesn't have volume
+            timestamp: new Date().getTime(),
+            source: 'fallback'
+          };
+        
+        default:
+          throw new Error(`Unsupported asset type: ${assetType}`);
+      }
+    } catch (fallbackError) {
+      console.error(`Fallback also failed for ${assetType}:${symbol}:`, fallbackError);
+      
+      // Only use mock data as last resort
+      const mockPrice = Math.abs(symbol.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 500 + 5;
+      const variation = (Math.sin(symbol.length) * 0.1 + 1);
+      const price = Math.round(mockPrice * variation * 100) / 100;
+      
+      return {
+        price: price,
+        change: 0,
+        changePercent: 0,
+        volume: 0,
+        timestamp: new Date().getTime(),
+        source: 'mock'
+      };
+    }
   }
 };
 
@@ -192,11 +211,27 @@ export const buyAsset = async (req, res) => {
       await user.save();
 
       // Update or create portfolio holding
+      // First try to find with new schema
       let holding = await Portfolio.findOne({ 
         userId: user._id, 
         assetType: assetType,
         assetSymbol: symbol 
       });
+      
+      // If not found, try to find with old schema (for backward compatibility)
+      if (!holding && assetType === 'stock') {
+        holding = await Portfolio.findOne({ 
+          userId: user._id, 
+          stockSymbol: symbol 
+        });
+        
+        // If found with old schema, migrate it
+        if (holding) {
+          holding.assetSymbol = symbol;
+          holding.assetType = assetType;
+          await holding.save();
+        }
+      }
       
       if (holding) {
         // Calculate new average buy price (asset price only)
@@ -318,11 +353,27 @@ export const sellAsset = async (req, res) => {
     }
 
     // Check if user owns this asset
-    const holding = await Portfolio.findOne({ 
+    // First try to find with new schema
+    let holding = await Portfolio.findOne({ 
       userId: user._id, 
       assetType: assetType,
       assetSymbol: symbol 
     });
+    
+    // If not found, try to find with old schema (for backward compatibility)
+    if (!holding && assetType === 'stock') {
+      holding = await Portfolio.findOne({ 
+        userId: user._id, 
+        stockSymbol: symbol 
+      });
+      
+      // If found with old schema, migrate it
+      if (holding) {
+        holding.assetSymbol = symbol;
+        holding.assetType = assetType;
+        await holding.save();
+      }
+    }
     
     if (!holding) {
       return res.status(400).json({ 
@@ -748,7 +799,7 @@ export const getTradeFees = async (req, res) => {
     if (isNaN(quantityNum) || quantityNum <= 0) {
       return res.status(400).json({ 
         success: false, 
-        message: "Invalid quantity" 
+        message: `Invalid quantity: ${quantity}. Quantity must be a positive number.` 
       });
     }
 
